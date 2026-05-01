@@ -45,6 +45,7 @@ services:
       - "8080:8080"
     volumes:
       - ./backend:/app
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -80,3 +81,4 @@ volumes:
   db_data:
   db_test_data:
   flutter_pub_cache:
+  uploads_data:

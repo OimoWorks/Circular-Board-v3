@@ -16,6 +16,8 @@ import (
 
 	"circular-board/internal/config"
 	"circular-board/internal/db"
+	"circular-board/internal/domain"
+	"circular-board/internal/files"
 	"circular-board/internal/handler"
 	"circular-board/internal/middleware"
 	"circular-board/internal/repository"
@@ -45,6 +47,10 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	authMiddleware := middleware.NewAuthMiddleware(authSvc)
 
+	fileRepo := files.NewRepository(pool)
+	fileSvc := files.NewService(fileRepo, cfg)
+	fileHandler := files.NewHandler(fileSvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -60,6 +66,19 @@ func main() {
 				r.Use(authMiddleware.Authenticate)
 				r.Get("/me", authHandler.Me)
 				r.Post("/logout", authHandler.Logout)
+			})
+		})
+
+		r.Route("/files", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+			r.Get("/", fileHandler.List)
+			r.Get("/years", fileHandler.AvailableYears)
+			r.Get("/{id}/download", fileHandler.Download)
+
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
+				r.Post("/", fileHandler.Upload)
+				r.Delete("/{id}", fileHandler.Delete)
 			})
 		})
 	})

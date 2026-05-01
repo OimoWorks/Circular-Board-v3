@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/auth_provider.dart';
 import '../features/auth/presentation/home_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/files/screens/file_list_screen.dart';
 
 // GoRouterはAuthNotifierをlistenable登録して認証状態変化で再評価する
 final routerProvider = Provider<GoRouter>((ref) {
@@ -31,6 +32,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/files',
+        builder: (context, state) => const FileListScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

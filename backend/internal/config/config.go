@@ -13,6 +13,8 @@ type Config struct {
 	AccessTokenExpiry   time.Duration
 	RefreshTokenExpiry  time.Duration
 	Env                 string
+	UploadDir           string
+	MaxUploadBytes      int64
 }
 
 func Load() *Config {
@@ -23,6 +25,8 @@ func Load() *Config {
 		AccessTokenExpiry:  getDurationEnv("ACCESS_TOKEN_EXPIRY_MIN", 15) * time.Minute,
 		RefreshTokenExpiry: getDurationEnv("REFRESH_TOKEN_EXPIRY_DAYS", 7) * time.Hour * 24,
 		Env:                getEnv("APP_ENV", "development"),
+		UploadDir:          getEnv("UPLOAD_DIR", "/app/uploads"),
+		MaxUploadBytes:     getInt64Env("MAX_UPLOAD_BYTES", 10<<20),
 	}
 }
 
@@ -43,4 +47,16 @@ func getDurationEnv(key string, defaultValue int64) time.Duration {
 		return time.Duration(defaultValue)
 	}
 	return time.Duration(n)
+}
+
+func getInt64Env(key string, defaultValue int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return n
 }

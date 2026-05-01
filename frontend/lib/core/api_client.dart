@@ -40,4 +40,10 @@ class ApiClient {
 
   Future<Response<T>> delete<T>(String path) =>
       _dio.delete<T>(path);
+
+  Future<Response<List<int>>> getBytes(String path) =>
+      _dio.get<List<int>>(path, options: Options(responseType: ResponseType.bytes));
+
+  Future<Response<T>> postFormData<T>(String path, FormData data) =>
+      _dio.post<T>(path, data: data);
 }
