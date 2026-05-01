@@ -1,0 +1,22 @@
+# 環境変数（シークレット含む）
+.env
+
+# Go
+backend/tmp/
+backend/vendor/
+
+# Flutter
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/build/
+frontend/.packages
+frontend/pubspec.lock
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
