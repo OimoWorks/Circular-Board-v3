@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../main.dart';
 import 'auth_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -18,9 +19,22 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('回覧板'),
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
+        title: const Row(
+          children: [
+            Icon(Icons.article_rounded, size: 22, color: Colors.white),
+            SizedBox(width: 8),
+            Text(
+              '回覧板',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: AppColors.primary,
+        foregroundColor: AppColors.onPrimary,
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded),
@@ -52,11 +66,11 @@ class HomeScreen extends ConsumerWidget {
                       children: [
                         CircleAvatar(
                           radius: 28,
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          child: Icon(
+                          backgroundColor: AppColors.primary.withOpacity(0.12),
+                          child: const Icon(
                             Icons.person_rounded,
                             size: 32,
-                            color: theme.colorScheme.primary,
+                            color: AppColors.primary,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -164,7 +178,7 @@ class _InfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: theme.colorScheme.primary),
+        Icon(icon, size: 20, color: AppColors.primary),
         const SizedBox(width: 12),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,27 +203,25 @@ class _RoleBadge extends StatelessWidget {
 
   const _RoleBadge({required this.role, required this.label});
 
-  Color _bgColor(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  Color _bgColor() {
     switch (role) {
       case 'system_admin':
-        return scheme.errorContainer;
+        return const Color(0xFFFFE4E4);
       case 'association_admin':
-        return scheme.secondaryContainer;
+        return const Color(0xFFD8F0E6);
       default:
-        return scheme.primaryContainer;
+        return AppColors.primary.withOpacity(0.1);
     }
   }
 
-  Color _fgColor(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  Color _fgColor() {
     switch (role) {
       case 'system_admin':
-        return scheme.onErrorContainer;
+        return const Color(0xFFB91C1C);
       case 'association_admin':
-        return scheme.onSecondaryContainer;
+        return AppColors.primaryDark;
       default:
-        return scheme.onPrimaryContainer;
+        return AppColors.primary;
     }
   }
 
@@ -218,7 +230,7 @@ class _RoleBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: _bgColor(context),
+        color: _bgColor(),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
@@ -226,7 +238,7 @@ class _RoleBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: _fgColor(context),
+          color: _fgColor(),
         ),
       ),
     );
