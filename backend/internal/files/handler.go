@@ -30,17 +30,23 @@ func NewHandler(svc *Service) *Handler {
 // POST /api/v1/files
 // アップロード（association_admin以上）
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
-	assocID, ok := h.mustAssociationID(w, r)
-	if !ok {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "認証が必要です")
 		return
 	}
-	claims := middleware.ClaimsFromContext(r.Context())
 	userID, _ := uuid.Parse(claims.UserID)
 
 	// リクエストボディサイズを制限
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodyBytes)
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		respondError(w, http.StatusRequestEntityTooLarge, "FILE_TOO_LARGE", "ファイルサイズが上限(10MB)を超えています")
+		return
+	}
+
+	// association_id の解決（system_admin はフォームから、それ以外はJWT）
+	assocID, ok := h.resolveAssocID(w, r, "association_id")
+	if !ok {
 		return
 	}
 
@@ -91,31 +97,37 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/files/:id
 // 削除（association_admin以上）
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	assocID, ok := h.mustAssociationID(w, r)
-	if !ok {
-		return
-	}
-
 	fileID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_ID", "IDの形式が不正です")
 		return
 	}
 
-	switch err := h.svc.Delete(r.Context(), assocID, fileID); {
-	case errors.Is(err, ErrNotFound):
+	var deleteErr error
+	if isSystemAdmin(r) {
+		deleteErr = h.svc.AdminDelete(r.Context(), fileID)
+	} else {
+		assocID, ok := h.mustAssociationID(w, r)
+		if !ok {
+			return
+		}
+		deleteErr = h.svc.Delete(r.Context(), assocID, fileID)
+	}
+
+	switch {
+	case errors.Is(deleteErr, ErrNotFound):
 		respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", "ファイルが見つかりません")
-	case err != nil:
+	case deleteErr != nil:
 		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "ファイルの削除に失敗しました")
 	default:
 		respondJSON(w, http.StatusOK, map[string]string{"message": "削除しました"})
 	}
 }
 
-// GET /api/v1/files?year=2024&month=1
-// 一覧取得（全ロール）
+// GET /api/v1/files?year=2024&month=1[&association_id=xxx]
+// 一覧取得（全ロール。system_adminはassociation_idが必須）
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	assocID, ok := h.mustAssociationID(w, r)
+	assocID, ok := h.resolveAssocID(w, r, "association_id")
 	if !ok {
 		return
 	}
@@ -144,23 +156,29 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/files/:id/download
 // ダウンロード（全ロール）
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
-	assocID, ok := h.mustAssociationID(w, r)
-	if !ok {
-		return
-	}
-
 	fileID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_ID", "IDの形式が不正です")
 		return
 	}
 
-	f, err := h.svc.GetFile(r.Context(), assocID, fileID)
+	var f *File
+	var getErr error
+	if isSystemAdmin(r) {
+		f, getErr = h.svc.AdminGetFile(r.Context(), fileID)
+	} else {
+		assocID, ok := h.mustAssociationID(w, r)
+		if !ok {
+			return
+		}
+		f, getErr = h.svc.GetFile(r.Context(), assocID, fileID)
+	}
+
 	switch {
-	case errors.Is(err, ErrNotFound):
+	case errors.Is(getErr, ErrNotFound):
 		respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", "ファイルが見つかりません")
 		return
-	case err != nil:
+	case getErr != nil:
 		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "ファイルの取得に失敗しました")
 		return
 	}
@@ -172,10 +190,10 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, f.StoragePath)
 }
 
-// GET /api/v1/files/years
+// GET /api/v1/files/years[?association_id=xxx]
 // 利用可能な年一覧（全ロール）
 func (h *Handler) AvailableYears(w http.ResponseWriter, r *http.Request) {
-	assocID, ok := h.mustAssociationID(w, r)
+	assocID, ok := h.resolveAssocID(w, r, "association_id")
 	if !ok {
 		return
 	}
@@ -191,8 +209,52 @@ func (h *Handler) AvailableYears(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"years": years})
 }
 
-// mustAssociationID はコンテキストからassociation_idを取得し、なければエラーを返す
-// system_admin（association_idなし）は現時点ではファイルAPIを直接利用不可
+// GET /api/v1/associations
+// 全自治会一覧（system_adminのみ）
+func (h *Handler) ListAssociations(w http.ResponseWriter, r *http.Request) {
+	associations, err := h.svc.ListAssociations(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "自治会一覧の取得に失敗しました")
+		return
+	}
+	items := make([]map[string]interface{}, 0, len(associations))
+	for _, a := range associations {
+		items = append(items, map[string]interface{}{
+			"id":   a.ID.String(),
+			"name": a.Name,
+			"code": a.Code,
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"associations": items})
+}
+
+// ─── ヘルパー ────────────────────────────────────────────────────
+
+// resolveAssocID はJWTまたはリクエストパラメータからassociation_idを取得する。
+// system_adminの場合はparamKeyで指定したフォーム/クエリパラメータから取得する。
+func (h *Handler) resolveAssocID(w http.ResponseWriter, r *http.Request, paramKey string) (uuid.UUID, bool) {
+	claims := middleware.ClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "認証が必要です")
+		return uuid.Nil, false
+	}
+	if claims.Role == "system_admin" {
+		raw := r.FormValue(paramKey)
+		if raw == "" {
+			respondError(w, http.StatusBadRequest, "MISSING_PARAM", "association_idが必要です")
+			return uuid.Nil, false
+		}
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "INVALID_PARAM", "association_idの形式が不正です")
+			return uuid.Nil, false
+		}
+		return id, true
+	}
+	return h.mustAssociationID(w, r)
+}
+
+// mustAssociationID はJWTからassociation_idを取得する（非system_admin用）
 func (h *Handler) mustAssociationID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil || claims.AssociationID == "" {
@@ -205,6 +267,11 @@ func (h *Handler) mustAssociationID(w http.ResponseWriter, r *http.Request) (uui
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func isSystemAdmin(r *http.Request) bool {
+	claims := middleware.ClaimsFromContext(r.Context())
+	return claims != nil && claims.Role == "system_admin"
 }
 
 // ─── レスポンス構築 ─────────────────────────────────────────────

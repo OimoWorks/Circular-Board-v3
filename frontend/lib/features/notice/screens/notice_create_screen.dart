@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../main.dart';
+import '../../../main.dart';
 import '../providers/notice_provider.dart';
 
 class NoticeCreateScreen extends ConsumerStatefulWidget {

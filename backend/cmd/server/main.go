@@ -87,6 +87,12 @@ func main() {
 			})
 		})
 
+		r.Route("/associations", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+			r.Use(authMiddleware.RequireRole(domain.RoleSystemAdmin))
+			r.Get("/", fileHandler.ListAssociations)
+		})
+
 		r.Route("/notices", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
 			r.Get("/", noticeHandler.List)

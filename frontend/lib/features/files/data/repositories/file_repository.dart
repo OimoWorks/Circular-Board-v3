@@ -17,13 +17,14 @@ class FileRepository {
 
   FileRepository(this._client);
 
-  Future<List<FileModel>> list({int year = 0, int month = 0}) async {
+  Future<List<FileModel>> list({int year = 0, int month = 0, String? associationId}) async {
     try {
       final res = await _client.get<Map<String, dynamic>>(
         '/files',
         queryParameters: {
           if (year != 0) 'year': year,
           if (month != 0) 'month': month,
+          if (associationId != null) 'association_id': associationId,
         },
       );
       final data = (res.data!['data'] as Map<String, dynamic>);
@@ -54,12 +55,14 @@ class FileRepository {
     required String mimeType,
     required int year,
     required int month,
+    String? associationId,
   }) async {
     try {
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(bytes, filename: filename, contentType: DioMediaType.parse(mimeType)),
         'year': year.toString(),
         'month': month.toString(),
+        if (associationId != null) 'association_id': associationId,
       });
       final res = await _client.postFormData<Map<String, dynamic>>('/files', formData);
       final data = res.data!['data'] as Map<String, dynamic>;

@@ -48,3 +48,10 @@ func ExtensionForMIME(mimeType string) string {
 	}
 	return ""
 }
+
+// AssociationRecord は自治会の簡易情報
+type AssociationRecord struct {
+	ID   uuid.UUID
+	Name string
+	Code string
+}

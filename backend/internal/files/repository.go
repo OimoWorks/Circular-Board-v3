@@ -117,6 +117,54 @@ func (r *Repository) AvailableYears(ctx context.Context, associationID uuid.UUID
 	return years, rows.Err()
 }
 
+// FindByIDNoTenant はassociation_idチェックなしでIDのみでファイルを取得する（system_admin用）
+func (r *Repository) FindByIDNoTenant(ctx context.Context, id uuid.UUID) (*File, error) {
+	const q = `
+		SELECT id, association_id, year, month, filename, original_filename,
+		       storage_path, uploaded_by, file_size, mime_type, created_at, deleted_at
+		FROM files
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	return r.scan(r.pool.QueryRow(ctx, q, id))
+}
+
+// SoftDeleteNoTenant はassociation_idチェックなしで論理削除する（system_admin用）
+func (r *Repository) SoftDeleteNoTenant(ctx context.Context, id uuid.UUID) error {
+	now := time.Now()
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE files SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`,
+		now, id,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListAssociations は全自治会の一覧を返す（system_admin用）
+func (r *Repository) ListAssociations(ctx context.Context) ([]*AssociationRecord, error) {
+	const q = `SELECT id, name, code FROM associations ORDER BY name`
+
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*AssociationRecord
+	for rows.Next() {
+		var a AssociationRecord
+		if err := rows.Scan(&a.ID, &a.Name, &a.Code); err != nil {
+			return nil, err
+		}
+		result = append(result, &a)
+	}
+	return result, rows.Err()
+}
+
 // scan は行スキャンの共通処理
 func (r *Repository) scan(row interface {
 	Scan(dest ...any) error

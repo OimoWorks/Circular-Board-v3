@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../main.dart';
 import '../../auth/presentation/auth_provider.dart';
+import '../data/models/association_model.dart';
 import '../data/models/file_model.dart';
+import '../providers/association_provider.dart';
 import '../providers/file_provider.dart';
 
 class FileListScreen extends ConsumerStatefulWidget {
@@ -21,12 +23,27 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
     '7月', '8月', '9月', '10月', '11月', '12月',
   ];
 
+  AssociationModel? _selectedAssociation;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(fileNotifierProvider).loadFiles();
+      final user = ref.read(currentUserProvider);
+      if (user?.role != 'system_admin') {
+        ref.read(fileNotifierProvider).loadFiles();
+      }
     });
+  }
+
+  void _selectAssociation(AssociationModel assoc) {
+    setState(() => _selectedAssociation = assoc);
+    ref.read(fileNotifierProvider).loadFiles(associationId: assoc.id);
+  }
+
+  void _backToAssociationList() {
+    setState(() => _selectedAssociation = null);
+    ref.read(fileNotifierProvider).clearError();
   }
 
   // ─── アップロード ──────────────────────────────────────────────
@@ -117,6 +134,7 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
       mimeType: mimeType,
       year: year,
       month: month,
+      associationId: _selectedAssociation?.id,
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -187,21 +205,61 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final notifier = ref.watch(fileNotifierProvider);
+    final isSystemAdmin = user?.role == 'system_admin';
     final canAdmin =
-        user?.role == 'association_admin' || user?.role == 'system_admin';
+        user?.role == 'association_admin' || isSystemAdmin;
+
+    // system_admin で自治会未選択 → 自治会一覧を表示
+    if (isSystemAdmin && _selectedAssociation == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Row(
+            children: [
+              Icon(Icons.folder_rounded, size: 22, color: Colors.white),
+              SizedBox(width: 8),
+              Text('回覧物', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.onPrimary,
+          elevation: 0,
+        ),
+        body: _buildAssociationList(),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.folder_rounded, size: 22, color: Colors.white),
-            SizedBox(width: 8),
-            Text('回覧物', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
+        title: isSystemAdmin
+            ? Row(
+                children: [
+                  const Icon(Icons.folder_rounded, size: 22, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _selectedAssociation?.name ?? '回覧物',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              )
+            : const Row(
+                children: [
+                  Icon(Icons.folder_rounded, size: 22, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('回覧物', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
         backgroundColor: AppColors.primary,
         foregroundColor: AppColors.onPrimary,
         elevation: 0,
+        leading: isSystemAdmin
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backToAssociationList,
+              )
+            : null,
       ),
       floatingActionButton: canAdmin
           ? FloatingActionButton.extended(
@@ -220,6 +278,75 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
             )
           : null,
       body: _buildBody(notifier, canAdmin),
+    );
+  }
+
+  Widget _buildAssociationList() {
+    final associationsAsync = ref.watch(allAssociationsProvider);
+
+    return associationsAsync.when(
+      data: (associations) {
+        if (associations.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.domain_rounded, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                Text('自治会がありません', style: TextStyle(color: Colors.grey[500])),
+              ],
+            ),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          itemCount: associations.length,
+          itemBuilder: (ctx, i) {
+            final assoc = associations[i];
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              elevation: 1,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              child: ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.domain_rounded,
+                      color: AppColors.primary, size: 22),
+                ),
+                title: Text(
+                  assoc.name,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primaryDark),
+                ),
+                subtitle: Text('コード: ${assoc.code}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                trailing: const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.primary),
+                onTap: () => _selectAssociation(assoc),
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded,
+                size: 48, color: Colors.red),
+            const SizedBox(height: 12),
+            Text(e.toString(), style: const TextStyle(color: Colors.red)),
+          ],
+        ),
+      ),
     );
   }
 

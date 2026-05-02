@@ -147,3 +147,35 @@ func (s *Service) GetFile(ctx context.Context, associationID uuid.UUID, fileID u
 func (s *Service) AvailableYears(ctx context.Context, associationID uuid.UUID) ([]int, error) {
 	return s.repo.AvailableYears(ctx, associationID)
 }
+
+// AdminGetFile はsystem_admin用：テナントチェックなしでファイルを取得する
+func (s *Service) AdminGetFile(ctx context.Context, fileID uuid.UUID) (*File, error) {
+	file, err := s.repo.FindByIDNoTenant(ctx, fileID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	return file, err
+}
+
+// AdminDelete はsystem_admin用：テナントチェックなしでファイルを削除する
+func (s *Service) AdminDelete(ctx context.Context, fileID uuid.UUID) error {
+	file, err := s.repo.FindByIDNoTenant(ctx, fileID)
+	if errors.Is(err, ErrNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("find file: %w", err)
+	}
+
+	if err := s.repo.SoftDeleteNoTenant(ctx, fileID); err != nil {
+		return fmt.Errorf("soft delete: %w", err)
+	}
+
+	_ = os.Remove(file.StoragePath)
+	return nil
+}
+
+// ListAssociations は全自治会の一覧を返す（system_admin用）
+func (s *Service) ListAssociations(ctx context.Context) ([]*AssociationRecord, error) {
+	return s.repo.ListAssociations(ctx)
+}

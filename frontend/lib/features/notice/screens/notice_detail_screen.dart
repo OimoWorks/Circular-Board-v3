@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../main.dart';
-import '../../../auth/presentation/auth_provider.dart';
+import '../../../main.dart';
+import '../../auth/presentation/auth_provider.dart';
 import '../data/models/notice_model.dart';
 import '../providers/notice_provider.dart';
 

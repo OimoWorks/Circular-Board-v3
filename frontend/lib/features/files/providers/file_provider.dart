@@ -6,6 +6,8 @@ import '../../auth/presentation/auth_provider.dart';
 import '../data/models/file_model.dart';
 import '../data/repositories/file_repository.dart';
 
+export '../data/models/file_model.dart';
+
 final fileRepositoryProvider = Provider<FileRepository>((ref) {
   final client = ref.watch(apiClientProvider);
   return FileRepository(client);
@@ -21,8 +23,10 @@ final availableYearsProvider = FutureProvider<List<int>>((ref) async {
   return repo.listAvailableYears();
 });
 
-// ホーム画面用: 最新5件（フィルタなしで全件取得し先頭5件）
+// ホーム画面用: 最新5件（system_adminには空リストを返す）
 final recentFilesProvider = FutureProvider.autoDispose<List<FileModel>>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user?.role == 'system_admin') return [];
   final repo = ref.watch(fileRepositoryProvider);
   final files = await repo.list();
   return files.take(5).toList();
@@ -36,6 +40,7 @@ class FileNotifier extends ChangeNotifier {
   bool _isUploading = false;
   bool _isDownloading = false;
   String? _errorMessage;
+  String? _currentAssociationId;
 
   FileNotifier(this._repo);
 
@@ -71,13 +76,14 @@ class FileNotifier extends ChangeNotifier {
 
   // ─── 操作 ──────────────────────────────────────────────────────
 
-  Future<void> loadFiles({int year = 0, int month = 0}) async {
+  Future<void> loadFiles({int year = 0, int month = 0, String? associationId}) async {
+    if (associationId != null) _currentAssociationId = associationId;
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _files = await _repo.list(year: year, month: month);
+      _files = await _repo.list(year: year, month: month, associationId: _currentAssociationId);
     } on FileException catch (e) {
       _errorMessage = e.message;
     } catch (e) {
@@ -95,6 +101,7 @@ class FileNotifier extends ChangeNotifier {
     required String mimeType,
     required int year,
     required int month,
+    String? associationId,
   }) async {
     _isUploading = true;
     _errorMessage = null;
@@ -108,6 +115,7 @@ class FileNotifier extends ChangeNotifier {
         mimeType: mimeType,
         year: year,
         month: month,
+        associationId: associationId ?? _currentAssociationId,
       );
       await loadFiles();
       return true;

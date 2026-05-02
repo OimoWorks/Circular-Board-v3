@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,6 +16,10 @@ class AppColors {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  }
   runApp(const ProviderScope(child: CircularBoardApp()));
 }
 
@@ -36,13 +41,11 @@ class _CircularBoardAppState extends ConsumerState<CircularBoardApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
 
-    // Noto Sans JP をベースに全テキストテーマを構築
-    final textTheme = GoogleFonts.notoSansJpTextTheme();
-
     return MaterialApp.router(
       title: '回覧板',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        fontFamily: 'Noto Sans JP',
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
           brightness: Brightness.light,
@@ -52,8 +55,6 @@ class _CircularBoardAppState extends ConsumerState<CircularBoardApp> {
           secondary: AppColors.primaryLight,
           tertiary: AppColors.accent,
         ),
-        textTheme: textTheme,
-        primaryTextTheme: textTheme,
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.primary,
