@@ -119,7 +119,7 @@ func (h *Handler) UnreadCount(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/notices/:id
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	assocID, _, ok := h.mustIDs(w, r)
+	assocID, userID, ok := h.mustIDs(w, r)
 	if !ok {
 		return
 	}
@@ -137,6 +137,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "お知らせの取得に失敗しました")
 	default:
+		// 閲覧時に自動で既読にする（エラーは無視）
+		_ = h.svc.MarkAsRead(r.Context(), assocID, noticeID, userID)
 		respondJSON(w, http.StatusOK, noticeResponse(n))
 	}
 }

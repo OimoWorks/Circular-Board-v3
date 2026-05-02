@@ -525,3 +525,267 @@ func TestAvailableYearsHandler_Unauthorized(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 }
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応テスト
+// ═══════════════════════════════════════════════════════════
+
+// newTestDepsWithAssociations は /api/v1/associations を含むテスト用ルーターを返す
+func newTestDepsWithAssociations() *testDeps {
+	cfg := testConfig()
+	fileRepo := files.NewRepository(testPool)
+	filesSvc := files.NewService(fileRepo, cfg)
+	filesHandler := files.NewHandler(filesSvc)
+
+	userRepo := repository.NewUserRepository(testPool)
+	tokenRepo := repository.NewRefreshTokenRepository(testPool)
+	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
+	authMW := middleware.NewAuthMiddleware(authSvc)
+
+	r := chi.NewRouter()
+	r.Route("/api/v1/files", func(r chi.Router) {
+		r.Use(authMW.Authenticate)
+		r.Get("/", filesHandler.List)
+		r.Get("/years", filesHandler.AvailableYears)
+		r.Get("/{id}/download", filesHandler.Download)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authMW.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
+			r.Post("/", filesHandler.Upload)
+			r.Delete("/{id}", filesHandler.Delete)
+		})
+	})
+	r.Route("/api/v1/associations", func(r chi.Router) {
+		r.Use(authMW.Authenticate)
+		r.Use(authMW.RequireRole(domain.RoleSystemAdmin))
+		r.Get("/", filesHandler.ListAssociations)
+	})
+
+	return &testDeps{router: r, filesSvc: filesSvc, cfg: cfg}
+}
+
+// ─── GET /api/v1/files（system_admin） ──────────────────────
+
+// TestListHandler_SystemAdmin_WithAssociationID
+// system_adminはassociation_idクエリパラメータを指定してファイル一覧を取得できる（200）
+func TestListHandler_SystemAdmin_WithAssociationID(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA一覧自治会A", "HDL_SA_LIST_A")
+	assocB := insertTestAssociation(t, "SA一覧自治会B", "HDL_SA_LIST_B")
+	userA := insertTestUser(t, &assocA, "Aユーザー", "a@hdl-sa-list.test", "pass123", "user")
+	userB := insertTestUser(t, &assocB, "Bユーザー", "b@hdl-sa-list.test", "pass123", "user")
+	_ = insertTestFile(t, assocA, userA, 2024, 1, "SA一覧A資料.pdf", "application/pdf")
+	_ = insertTestFile(t, assocB, userB, 2024, 2, "SA一覧B資料.pdf", "application/pdf")
+
+	// system_adminはassociation_idなしのJWT（associationIDが空文字）
+	saID := insertTestUser(t, nil, "system_admin", "sa@hdl-sa-list.test", "pass123", "system_admin")
+	token := makeTestToken(t, "" /* association_id なし */, saID.String(), "system_admin")
+
+	deps := newTestDeps()
+
+	// assocAのファイルを取得
+	rrA := doRequest(t, deps.router, http.MethodGet,
+		fmt.Sprintf("/api/v1/files?association_id=%s", assocA.String()),
+		nil, token,
+	)
+	assert.Equal(t, http.StatusOK, rrA.Code)
+	bodyA := decodeBody(t, rrA)
+	dataA := bodyA["data"].(map[string]interface{})
+	listA := dataA["files"].([]interface{})
+	for _, item := range listA {
+		f := item.(map[string]interface{})
+		assert.Equal(t, assocA.String(), f["association_id"],
+			"assocAのファイルのみが返るべき")
+	}
+
+	// assocBのファイルを取得
+	rrB := doRequest(t, deps.router, http.MethodGet,
+		fmt.Sprintf("/api/v1/files?association_id=%s", assocB.String()),
+		nil, token,
+	)
+	assert.Equal(t, http.StatusOK, rrB.Code)
+}
+
+// TestListHandler_SystemAdmin_MissingAssociationID
+// system_adminがassociation_idを指定しない場合は400が返る
+func TestListHandler_SystemAdmin_MissingAssociationID(t *testing.T) {
+	saID := insertTestUser(t, nil, "system_admin_miss", "sa@hdl-sa-miss.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/files", nil, token)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	body := decodeBody(t, rr)
+	errObj := body["error"].(map[string]interface{})
+	assert.Equal(t, "MISSING_PARAM", errObj["code"])
+}
+
+// ─── POST /api/v1/files（system_admin） ─────────────────────
+
+// TestUploadHandler_SystemAdmin_WithAssociationID
+// system_adminはassociation_idフォームフィールドを指定してアップロードできる（201）
+func TestUploadHandler_SystemAdmin_WithAssociationID(t *testing.T) {
+	assocID := insertTestAssociation(t, "SAアップロード自治会", "HDL_SA_UPL")
+	saID := insertTestUser(t, nil, "sa_uploader", "sa@hdl-sa-upl.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDeps()
+	rr := doMultipartUpload(t, deps.router, "/api/v1/files",
+		dummyPDF, "SA資料.pdf", "application/pdf",
+		map[string]string{
+			"year":           "2024",
+			"month":          "5",
+			"association_id": assocID.String(),
+		},
+		token,
+	)
+
+	assert.Equal(t, http.StatusCreated, rr.Code)
+	body := decodeBody(t, rr)
+	data := body["data"].(map[string]interface{})
+	assert.Equal(t, "SA資料.pdf", data["original_filename"])
+	assert.Equal(t, assocID.String(), data["association_id"], "指定した自治会にアップロードされるべき")
+
+	t.Cleanup(func() {
+		fileID, _ := uuid.Parse(data["id"].(string))
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM files WHERE id = $1`, fileID)
+	})
+}
+
+// TestUploadHandler_SystemAdmin_MissingAssociationID
+// system_adminがassociation_idなしでアップロードすると400が返る
+func TestUploadHandler_SystemAdmin_MissingAssociationID(t *testing.T) {
+	saID := insertTestUser(t, nil, "sa_upl_noassoc", "sa@hdl-sa-upl-na.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDeps()
+	rr := doMultipartUpload(t, deps.router, "/api/v1/files",
+		dummyPDF, "SA資料.pdf", "application/pdf",
+		map[string]string{
+			"year":  "2024",
+			"month": "5",
+			// association_id なし
+		},
+		token,
+	)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+// ─── DELETE /api/v1/files/:id（system_admin） ───────────────
+
+// TestDeleteHandler_SystemAdmin_CrossTenant
+// system_adminは全自治会のファイルを削除できる（200）
+func TestDeleteHandler_SystemAdmin_CrossTenant(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA削除自治会A", "HDL_SA_DEL_A")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@hdl-sa-del.test", "pass123", "user")
+	fileID := insertTestFile(t, assocA, userA, 2024, 8, "SA削除対象.pdf", "application/pdf")
+
+	// system_adminのトークン（associationIDなし）
+	saID := insertTestUser(t, nil, "sa_deleter", "sa@hdl-sa-del.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/files/%s", fileID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := decodeBody(t, rr)
+	data := body["data"].(map[string]interface{})
+	assert.Equal(t, "削除しました", data["message"])
+
+	// DBで論理削除されているか確認
+	var deletedAt *os.File
+	_ = deletedAt
+	var count int
+	require.NoError(t, testPool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM files WHERE id = $1 AND deleted_at IS NOT NULL`, fileID).Scan(&count))
+	assert.Equal(t, 1, count, "論理削除されているべき")
+}
+
+// TestDeleteHandler_SystemAdmin_AnotherTenant
+// system_adminが全く別の自治会（自分のテナント外）のファイルも削除できる（200）
+func TestDeleteHandler_SystemAdmin_AnotherTenant(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA他テナント削除自治会A", "HDL_SA_DELTA")
+	assocB := insertTestAssociation(t, "SA他テナント削除自治会B", "HDL_SA_DELTB")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@hdl-sa-delta.test", "pass123", "user")
+	fileIDinA := insertTestFile(t, assocA, userA, 2024, 9, "自治会A資料.pdf", "application/pdf")
+
+	// system_adminはassocBに関連付けられていても自治会Aのファイルを削除できる
+	saID := insertTestUser(t, &assocB, "SA管理者", "sa@hdl-sa-delta.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/files/%s", fileIDinA),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "system_adminは他テナントのファイルも削除できる")
+}
+
+// ─── GET /api/v1/associations（system_adminのみ） ───────────
+
+// TestListAssociationsHandler_SystemAdmin_Success
+// system_adminは全自治会の一覧を取得できる（200）
+func TestListAssociationsHandler_SystemAdmin_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA自治会一覧A", "HDL_SA_ASSOC_A")
+	assocB := insertTestAssociation(t, "SA自治会一覧B", "HDL_SA_ASSOC_B")
+	saID := insertTestUser(t, nil, "sa_assoc_lister", "sa@hdl-sa-assoc.test", "pass123", "system_admin")
+	token := makeTestToken(t, "", saID.String(), "system_admin")
+
+	deps := newTestDepsWithAssociations()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/associations", nil, token)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	body := decodeBody(t, rr)
+	data := body["data"].(map[string]interface{})
+	associations := data["associations"].([]interface{})
+
+	ids := make(map[string]bool)
+	for _, item := range associations {
+		a := item.(map[string]interface{})
+		ids[a["id"].(string)] = true
+		assert.NotEmpty(t, a["name"])
+		assert.NotEmpty(t, a["code"])
+	}
+	assert.True(t, ids[assocA.String()], "自治会Aが含まれるべき")
+	assert.True(t, ids[assocB.String()], "自治会Bが含まれるべき")
+}
+
+// TestListAssociationsHandler_Unauthorized
+// 未認証は401が返る
+func TestListAssociationsHandler_Unauthorized(t *testing.T) {
+	deps := newTestDepsWithAssociations()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/associations", nil, "")
+
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+}
+
+// TestListAssociationsHandler_Forbidden_UserRole
+// 一般ユーザーは403が返る
+func TestListAssociationsHandler_Forbidden_UserRole(t *testing.T) {
+	assocID := insertTestAssociation(t, "SA拒否自治会", "HDL_SA_ASSOC_DENY")
+	userID := insertTestUser(t, &assocID, "一般ユーザー", "user@hdl-sa-assoc-deny.test", "pass123", "user")
+	token := makeTestToken(t, assocID.String(), userID.String(), "user")
+
+	deps := newTestDepsWithAssociations()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/associations", nil, token)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestListAssociationsHandler_Forbidden_AssociationAdmin
+// association_adminも403が返る（system_adminのみ許可）
+func TestListAssociationsHandler_Forbidden_AssociationAdmin(t *testing.T) {
+	assocID := insertTestAssociation(t, "SA管理者拒否自治会", "HDL_SA_ASSOC_ADMDEN")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sa-assoc-admden.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	deps := newTestDepsWithAssociations()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/associations", nil, token)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}

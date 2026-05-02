@@ -471,3 +471,151 @@ func TestService_AvailableYears(t *testing.T) {
 	assert.Contains(t, years, 2021)
 	assert.Contains(t, years, 2022)
 }
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Service.AdminGetFile
+// ═══════════════════════════════════════════════════════════
+
+// TestService_AdminGetFile_CrossTenant_Success
+// system_adminは他自治会のファイルをIDのみで取得できる
+func TestService_AdminGetFile_CrossTenant_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA取得自治会A", "SVC_SA_GET_A")
+	assocB := insertTestAssociation(t, "SA取得自治会B", "SVC_SA_GET_B")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@svc-sa-get.test", "pass123", "user")
+	fileID := insertTestFile(t, assocA, userA, 2024, 6, "SA取得テスト.pdf", "application/pdf")
+
+	svc := newFilesService()
+
+	// 通常のGetFileはテナント境界があるためassocBでは取得できない
+	_, errCross := svc.GetFile(context.Background(), assocB, fileID)
+	assert.True(t, errors.Is(errCross, files.ErrFileTooLarge) || errors.Is(errCross, files.ErrNotFound),
+		"通常GetFileは他テナントのファイルを取得できない")
+
+	// AdminGetFileはテナント境界なしで取得できる
+	got, err := svc.AdminGetFile(context.Background(), fileID)
+	require.NoError(t, err)
+	assert.Equal(t, fileID, got.ID)
+	assert.Equal(t, assocA, got.AssociationID)
+	_ = assocB
+}
+
+// TestService_AdminGetFile_NotFound
+// 存在しないIDはErrNotFound
+func TestService_AdminGetFile_NotFound(t *testing.T) {
+	svc := newFilesService()
+	_, err := svc.AdminGetFile(context.Background(), uuid.New())
+	assert.True(t, errors.Is(err, files.ErrNotFound))
+}
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Service.AdminDelete
+// ═══════════════════════════════════════════════════════════
+
+// TestService_AdminDelete_CrossTenant_Success
+// system_adminは他自治会のファイルを削除できる
+func TestService_AdminDelete_CrossTenant_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA削除自治会A", "SVC_SA_DEL_A")
+	assocB := insertTestAssociation(t, "SA削除自治会B", "SVC_SA_DEL_B")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@svc-sa-del.test", "pass123", "association_admin")
+
+	svc := newFilesService()
+	uploaded, err := svc.Upload(context.Background(), assocA, userA, files.UploadInput{
+		Reader:           bytes.NewReader(dummyPDF),
+		OriginalFilename: "SA削除テスト.pdf",
+		Size:             int64(len(dummyPDF)),
+		MimeType:         "application/pdf",
+		Year:             2024,
+		Month:            7,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM files WHERE id = $1`, uploaded.ID)
+	})
+
+	// assocBの管理者として通常Deleteしようとしても失敗する
+	errCross := svc.Delete(context.Background(), assocB, uploaded.ID)
+	assert.True(t, errors.Is(errCross, files.ErrNotFound),
+		"通常Deleteは他テナントのファイルを削除できない")
+
+	// AdminDeleteはテナント境界なしで削除できる
+	err = svc.AdminDelete(context.Background(), uploaded.ID)
+	require.NoError(t, err, "AdminDeleteは他テナントのファイルも削除できる")
+
+	// GetFileでも取得できなくなっている
+	_, errGet := svc.AdminGetFile(context.Background(), uploaded.ID)
+	assert.True(t, errors.Is(errGet, files.ErrNotFound), "AdminDelete後はファイルが取得できない")
+}
+
+// TestService_AdminDelete_NotFound
+// 存在しないIDはErrNotFound
+func TestService_AdminDelete_NotFound(t *testing.T) {
+	svc := newFilesService()
+	err := svc.AdminDelete(context.Background(), uuid.New())
+	assert.True(t, errors.Is(err, files.ErrNotFound))
+}
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Service.ListAssociations
+// ═══════════════════════════════════════════════════════════
+
+// TestService_ListAssociations_Success
+// system_adminは全自治会の一覧を取得できる
+func TestService_ListAssociations_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA一覧自治会A", "SVC_SA_ASSOC_A")
+	assocB := insertTestAssociation(t, "SA一覧自治会B", "SVC_SA_ASSOC_B")
+
+	svc := newFilesService()
+	associations, err := svc.ListAssociations(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, associations)
+
+	ids := make(map[uuid.UUID]bool)
+	for _, a := range associations {
+		ids[a.ID] = true
+	}
+	assert.True(t, ids[assocA], "自治会Aが一覧に含まれるべき")
+	assert.True(t, ids[assocB], "自治会Bが一覧に含まれるべき")
+}
+
+// TestService_Upload_SystemAdmin_ToAnyAssociation
+// system_adminは自治会を選択してアップロードできる（サービス層はロールを見ない）
+func TestService_Upload_SystemAdmin_ToAnyAssociation(t *testing.T) {
+	assocA := insertTestAssociation(t, "SAアップロード自治会A", "SVC_SA_UPL_A")
+	assocB := insertTestAssociation(t, "SAアップロード自治会B", "SVC_SA_UPL_B")
+	// system_admin は associations に属さないため association_id なしで作成
+	saID := insertTestUser(t, nil, "system_admin", "sa@svc-sa-upl.test", "pass123", "system_admin")
+
+	svc := newFilesService()
+
+	// assocAに対してアップロード（system_adminのuserIDを使用）
+	resultA, err := svc.Upload(context.Background(), assocA, saID, files.UploadInput{
+		Reader:           bytes.NewReader(dummyPDF),
+		OriginalFilename: "SA自治会A向け.pdf",
+		Size:             int64(len(dummyPDF)),
+		MimeType:         "application/pdf",
+		Year:             2024,
+		Month:            8,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Remove(resultA.StoragePath)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM files WHERE id = $1`, resultA.ID)
+	})
+	assert.Equal(t, assocA, resultA.AssociationID, "assocAにアップロードされるべき")
+
+	// assocBに対してもアップロードできる
+	resultB, err := svc.Upload(context.Background(), assocB, saID, files.UploadInput{
+		Reader:           bytes.NewReader(dummyPDF),
+		OriginalFilename: "SA自治会B向け.pdf",
+		Size:             int64(len(dummyPDF)),
+		MimeType:         "application/pdf",
+		Year:             2024,
+		Month:            9,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Remove(resultB.StoragePath)
+		_, _ = testPool.Exec(context.Background(), `DELETE FROM files WHERE id = $1`, resultB.ID)
+	})
+	assert.Equal(t, assocB, resultB.AssociationID, "assocBにアップロードされるべき")
+}

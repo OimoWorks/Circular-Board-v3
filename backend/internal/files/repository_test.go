@@ -399,3 +399,120 @@ func TestRepository_AvailableYears_ExcludeDeleted(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, yearsAfter, 2098, "削除済みファイルの年は含まれない")
 }
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Repository.FindByIDNoTenant
+// ═══════════════════════════════════════════════════════════
+
+// TestRepository_FindByIDNoTenant_Success
+// system_adminは全自治会のファイルをIDのみで取得できる
+func TestRepository_FindByIDNoTenant_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA単件自治会A", "REPO_SA_FNT_A")
+	assocB := insertTestAssociation(t, "SA単件自治会B", "REPO_SA_FNT_B")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@repo-sa-fnt.test", "pass123", "user")
+	fileID := insertTestFile(t, assocA, userA, 2024, 1, "SA取得テスト.pdf", "application/pdf")
+
+	repo := files.NewRepository(testPool)
+
+	// テナントAのファイルをテナントBの権限なしで取得できる（system_admin用）
+	got, err := repo.FindByIDNoTenant(context.Background(), fileID)
+	require.NoError(t, err)
+	assert.Equal(t, fileID, got.ID)
+	assert.Equal(t, assocA, got.AssociationID)
+	_ = assocB
+}
+
+// TestRepository_FindByIDNoTenant_NotFound
+// 存在しないIDはErrNotFoundが返る
+func TestRepository_FindByIDNoTenant_NotFound(t *testing.T) {
+	repo := files.NewRepository(testPool)
+	_, err := repo.FindByIDNoTenant(context.Background(), uuid.New())
+	assert.True(t, errors.Is(err, files.ErrNotFound))
+}
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Repository.SoftDeleteNoTenant
+// ═══════════════════════════════════════════════════════════
+
+// TestRepository_SoftDeleteNoTenant_Success
+// system_adminは自治会を指定せずに任意のファイルを削除できる
+func TestRepository_SoftDeleteNoTenant_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA削除自治会", "REPO_SA_DNT")
+	userA := insertTestUser(t, &assocA, "ユーザー", "a@repo-sa-dnt.test", "pass123", "user")
+	fileID := insertTestFile(t, assocA, userA, 2024, 3, "SA削除対象.pdf", "application/pdf")
+
+	repo := files.NewRepository(testPool)
+	err := repo.SoftDeleteNoTenant(context.Background(), fileID)
+	require.NoError(t, err)
+
+	// 削除後はFindByIDNoTenantでも取得できない（deleted_at IS NULL 条件）
+	_, errFind := repo.FindByIDNoTenant(context.Background(), fileID)
+	assert.True(t, errors.Is(errFind, files.ErrNotFound),
+		"論理削除後はFindByIDNoTenantで取得できない")
+}
+
+// TestRepository_SoftDeleteNoTenant_CrossTenant
+// 他自治会のファイルも削除できる（system_admin用）
+func TestRepository_SoftDeleteNoTenant_CrossTenant(t *testing.T) {
+	assocA := insertTestAssociation(t, "SA他テナント削除A", "REPO_SA_DNTA")
+	assocB := insertTestAssociation(t, "SA他テナント削除B", "REPO_SA_DNTB")
+	userA := insertTestUser(t, &assocA, "ユーザーA", "a@repo-sa-dnta.test", "pass123", "user")
+	fileID := insertTestFile(t, assocA, userA, 2024, 4, "テナントA資料.pdf", "application/pdf")
+
+	repo := files.NewRepository(testPool)
+	// 通常の SoftDelete（テナントBとして）では削除できない
+	err := repo.SoftDelete(context.Background(), fileID, assocB)
+	assert.True(t, errors.Is(err, files.ErrNotFound), "通常SoftDeleteは他テナントを削除できない")
+
+	// SoftDeleteNoTenant（system_admin用）では削除できる
+	err = repo.SoftDeleteNoTenant(context.Background(), fileID)
+	require.NoError(t, err, "SoftDeleteNoTenantは他テナントのファイルも削除できる")
+}
+
+// TestRepository_SoftDeleteNoTenant_NotFound
+// 存在しないIDはErrNotFoundが返る
+func TestRepository_SoftDeleteNoTenant_NotFound(t *testing.T) {
+	repo := files.NewRepository(testPool)
+	err := repo.SoftDeleteNoTenant(context.Background(), uuid.New())
+	assert.True(t, errors.Is(err, files.ErrNotFound))
+}
+
+// ═══════════════════════════════════════════════════════════
+// system_admin 対応：Repository.ListAssociations
+// ═══════════════════════════════════════════════════════════
+
+// TestRepository_ListAssociations_Success
+// 自治会階層（全自治会一覧）が正しく取得できる
+func TestRepository_ListAssociations_Success(t *testing.T) {
+	assocA := insertTestAssociation(t, "階層自治会A", "REPO_SA_ASSOC_A")
+	assocB := insertTestAssociation(t, "階層自治会B", "REPO_SA_ASSOC_B")
+
+	repo := files.NewRepository(testPool)
+	associations, err := repo.ListAssociations(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, associations)
+
+	// 作成した2つの自治会が含まれているか確認
+	ids := make(map[uuid.UUID]bool)
+	for _, a := range associations {
+		ids[a.ID] = true
+		assert.NotEmpty(t, a.Name)
+		assert.NotEmpty(t, a.Code)
+	}
+	assert.True(t, ids[assocA], "自治会Aが一覧に含まれるべき")
+	assert.True(t, ids[assocB], "自治会Bが一覧に含まれるべき")
+}
+
+// TestRepository_ListAssociations_OrderByName
+// 自治会一覧が名前順で返る
+func TestRepository_ListAssociations_OrderByName(t *testing.T) {
+	repo := files.NewRepository(testPool)
+	associations, err := repo.ListAssociations(context.Background())
+	require.NoError(t, err)
+
+	// 名前順に並んでいることを確認
+	for i := 1; i < len(associations); i++ {
+		assert.LessOrEqual(t, associations[i-1].Name, associations[i].Name,
+			"自治会一覧は名前順（昇順）で返るべき")
+	}
+}
