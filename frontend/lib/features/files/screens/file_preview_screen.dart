@@ -2,12 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdfx/pdfx.dart';
 
 import '../../../core/download_helper.dart';
 import '../../../main.dart';
 import '../data/models/file_model.dart';
 import '../providers/file_provider.dart';
+import '../widgets/pdf_viewer.dart';
 
 class FilePreviewScreen extends ConsumerStatefulWidget {
   final FileModel file;
@@ -111,7 +111,9 @@ class _FilePreviewScreenState extends ConsumerState<FilePreviewScreen> {
             );
           }
           final bytes = snap.data!;
-          if (_isPdf) return _PdfPreview(bytes: bytes);
+          // PDFはプラットフォーム別ビューア（Web: pdfx、Android: flutter_pdfview）
+          if (_isPdf) return PdfViewer(bytes: bytes);
+          // 画像はInteractiveViewerでピンチズーム対応
           return _ImagePreview(bytes: bytes);
         },
       ),
@@ -119,66 +121,98 @@ class _FilePreviewScreenState extends ConsumerState<FilePreviewScreen> {
   }
 }
 
-// ─── PDFプレビュー ──────────────────────────────────────────────
+// ─── 画像プレビュー（JPG/PNG）──────────────────────────────────
 
-class _PdfPreview extends StatefulWidget {
-  final Uint8List bytes;
-  const _PdfPreview({required this.bytes});
-
-  @override
-  State<_PdfPreview> createState() => _PdfPreviewState();
-}
-
-class _PdfPreviewState extends State<_PdfPreview> {
-  late final PdfControllerPinch _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = PdfControllerPinch(
-      document: PdfDocument.openData(widget.bytes),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PdfViewPinch(
-      controller: _controller,
-      builders: PdfViewPinchBuilders<DefaultBuilderOptions>(
-        options: const DefaultBuilderOptions(),
-        documentLoaderBuilder: (_) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-        pageLoaderBuilder: (_) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-        errorBuilder: (_, error) => Center(
-          child: Text('PDFの読み込みエラー: $error'),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── 画像プレビュー ─────────────────────────────────────────────
-
-class _ImagePreview extends StatelessWidget {
+class _ImagePreview extends StatefulWidget {
   final Uint8List bytes;
   const _ImagePreview({required this.bytes});
 
   @override
+  State<_ImagePreview> createState() => _ImagePreviewState();
+}
+
+class _ImagePreviewState extends State<_ImagePreview>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final TransformationController _transformController;
+  Animation<Matrix4>? _zoomAnimation;
+  TapDownDetails? _doubleTapDetails;
+  bool _isZoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _transformController = TransformationController();
+    _transformController.addListener(_onTransformChanged);
+  }
+
+  void _onTransformChanged() {
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final zoomed = scale > 1.05;
+    if (zoomed != _isZoomed) setState(() => _isZoomed = zoomed);
+  }
+
+  @override
+  void dispose() {
+    _zoomAnimation?.removeListener(_applyZoom);
+    _animController.dispose();
+    _transformController.removeListener(_onTransformChanged);
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  void _applyZoom() {
+    if (mounted && _zoomAnimation != null) {
+      _transformController.value = _zoomAnimation!.value;
+    }
+  }
+
+  void _handleDoubleTap() {
+    Matrix4 target;
+    if (_isZoomed) {
+      target = Matrix4.identity();
+    } else {
+      if (_doubleTapDetails == null) return;
+      final pos = _doubleTapDetails!.localPosition;
+      const scale = 2.5;
+      target = Matrix4.identity()
+        ..translate(-pos.dx * (scale - 1), -pos.dy * (scale - 1))
+        ..scale(scale);
+    }
+
+    _zoomAnimation?.removeListener(_applyZoom);
+    _zoomAnimation = Matrix4Tween(
+      begin: _transformController.value,
+      end: target,
+    ).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
+    );
+    _zoomAnimation!.addListener(_applyZoom);
+    _animController.forward(from: 0.0).then((_) {
+      _zoomAnimation?.removeListener(_applyZoom);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return InteractiveViewer(
-      minScale: 0.5,
-      maxScale: 4.0,
-      child: Center(
-        child: Image.memory(bytes, fit: BoxFit.contain),
+    return Container(
+      color: const Color(0xFF616161),
+      child: GestureDetector(
+        onDoubleTapDown: (d) => _doubleTapDetails = d,
+        onDoubleTap: _handleDoubleTap,
+        child: InteractiveViewer(
+          transformationController: _transformController,
+          panEnabled: _isZoomed,
+          minScale: 0.5,
+          maxScale: 5.0,
+          child: Center(
+            child: Image.memory(widget.bytes, fit: BoxFit.contain),
+          ),
+        ),
       ),
     );
   }

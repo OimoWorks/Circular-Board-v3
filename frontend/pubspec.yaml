@@ -28,6 +28,7 @@ dependencies:
   url_launcher: ^6.2.0
   path_provider: ^2.1.0
   pdfx: ^2.5.0
+  flutter_pdfview: ^2.1.0
 
   cupertino_icons: ^1.0.6
 
