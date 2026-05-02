@@ -20,6 +20,7 @@ import (
 	"circular-board/internal/files"
 	"circular-board/internal/handler"
 	"circular-board/internal/middleware"
+	"circular-board/internal/notice"
 	"circular-board/internal/repository"
 	"circular-board/internal/service"
 )
@@ -51,6 +52,10 @@ func main() {
 	fileSvc := files.NewService(fileRepo, cfg)
 	fileHandler := files.NewHandler(fileSvc)
 
+	noticeRepo := notice.NewRepository(pool)
+	noticeSvc := notice.NewService(noticeRepo)
+	noticeHandler := notice.NewHandler(noticeSvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -79,6 +84,20 @@ func main() {
 				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
 				r.Post("/", fileHandler.Upload)
 				r.Delete("/{id}", fileHandler.Delete)
+			})
+		})
+
+		r.Route("/notices", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+			r.Get("/", noticeHandler.List)
+			r.Get("/unread-count", noticeHandler.UnreadCount) // /{id}より先に登録
+			r.Get("/{id}", noticeHandler.Get)
+			r.Post("/{id}/read", noticeHandler.MarkAsRead)
+
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
+				r.Post("/", noticeHandler.Create)
+				r.Delete("/{id}", noticeHandler.Delete)
 			})
 		})
 	})

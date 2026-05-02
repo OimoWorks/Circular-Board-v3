@@ -8,6 +8,9 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/files/data/models/file_model.dart';
 import '../features/files/screens/file_list_screen.dart';
 import '../features/files/screens/file_preview_screen.dart';
+import '../features/notice/screens/notice_create_screen.dart';
+import '../features/notice/screens/notice_detail_screen.dart';
+import '../features/notice/screens/notice_list_screen.dart';
 
 // GoRouterはAuthNotifierをlistenable登録して認証状態変化で再評価する
 final routerProvider = Provider<GoRouter>((ref) {
@@ -44,6 +47,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final file = state.extra as FileModel;
           return FilePreviewScreen(file: file);
+        },
+      ),
+      GoRoute(
+        path: '/notices',
+        builder: (context, state) => const NoticeListScreen(),
+      ),
+      GoRoute(
+        path: '/notices/create',
+        builder: (context, state) => const NoticeCreateScreen(),
+      ),
+      GoRoute(
+        path: '/notices/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return NoticeDetailScreen(noticeId: id);
         },
       ),
     ],

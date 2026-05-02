@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../main.dart';
 import '../../files/data/models/file_model.dart';
 import '../../files/providers/file_provider.dart';
+import '../../notice/data/models/notice_model.dart';
+import '../../notice/providers/notice_provider.dart';
 import 'auth_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -15,6 +18,7 @@ class HomeScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final auth = ref.watch(authNotifierProvider);
     final theme = Theme.of(context);
+    final isEasy = ref.watch(easyModeProvider);
 
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -22,13 +26,17 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.article_rounded, size: 22, color: Colors.white),
-            SizedBox(width: 8),
+            const Icon(Icons.article_rounded, size: 22, color: Colors.white),
+            const SizedBox(width: 8),
             Text(
               '回覧板',
-              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+                fontSize: isEasy ? 20 : 17,
+              ),
             ),
           ],
         ),
@@ -36,6 +44,17 @@ class HomeScreen extends ConsumerWidget {
         foregroundColor: AppColors.onPrimary,
         elevation: 0,
         actions: [
+          // かんたんモード切替
+          IconButton(
+            icon: Icon(
+              isEasy
+                  ? Icons.text_decrease_rounded
+                  : Icons.text_increase_rounded,
+            ),
+            tooltip: isEasy ? '通常モード' : 'かんたんモード',
+            onPressed: () =>
+                ref.read(easyModeProvider.notifier).state = !isEasy,
+          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'ログアウト',
@@ -51,7 +70,7 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isEasy ? 20 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -66,7 +85,8 @@ class HomeScreen extends ConsumerWidget {
                       children: [
                         CircleAvatar(
                           radius: 26,
-                          backgroundColor: AppColors.primary.withOpacity(0.12),
+                          backgroundColor:
+                              AppColors.primary.withOpacity(0.12),
                           child: const Icon(Icons.person_rounded,
                               size: 30, color: AppColors.primary),
                         ),
@@ -77,10 +97,10 @@ class HomeScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 user.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: isEasy ? 18 : null,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               _RoleBadge(
@@ -97,12 +117,14 @@ class HomeScreen extends ConsumerWidget {
                       icon: Icons.email_rounded,
                       label: 'メールアドレス',
                       value: user.email,
+                      isEasy: isEasy,
                     ),
                     const SizedBox(height: 10),
                     _InfoRow(
                       icon: Icons.home_work_rounded,
                       label: '所属自治会',
                       value: user.associationName ?? '（全自治会）',
+                      isEasy: isEasy,
                     ),
                   ],
                 ),
@@ -110,17 +132,26 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
+            // ─── メニュー：お知らせ ──────────────────────────────
+            _NoticeMenuCard(isEasy: isEasy),
+            const SizedBox(height: 10),
+
             // ─── メニュー：回覧物 ────────────────────────────────
             _MenuCard(
               icon: Icons.folder_rounded,
               title: '回覧物',
               subtitle: '回覧資料のアップロード、プレビュー、ダウンロード',
               onTap: () => context.push('/files'),
+              isEasy: isEasy,
             ),
             const SizedBox(height: 20),
 
+            // ─── 最新のお知らせ ──────────────────────────────────
+            _RecentNoticesSection(theme: theme, isEasy: isEasy),
+            const SizedBox(height: 20),
+
             // ─── 最新の回覧物 ────────────────────────────────────
-            _RecentFilesSection(theme: theme),
+            _RecentFilesSection(theme: theme, isEasy: isEasy),
           ],
         ),
       ),
@@ -149,11 +180,271 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+// ─── お知らせメニューカード（未読バッジ付き） ─────────────────────
+
+class _NoticeMenuCard extends ConsumerWidget {
+  final bool isEasy;
+  const _NoticeMenuCard({required this.isEasy});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unreadAsync = ref.watch(unreadCountProvider);
+
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.push('/notices'),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Stack(
+                  children: [
+                    const Center(
+                      child: Icon(Icons.notifications_rounded,
+                          color: AppColors.primary, size: 24),
+                    ),
+                    // 未読バッジ
+                    unreadAsync.when(
+                      data: (count) => count > 0
+                          ? Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                constraints: const BoxConstraints(
+                                    minWidth: 16, minHeight: 16),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  count > 99 ? '99+' : '$count',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'お知らせ',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: isEasy ? 16 : 15,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        unreadAsync.when(
+                          data: (count) => count > 0
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '未読 $count件',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '自治会からのお知らせを確認する',
+                      style: TextStyle(
+                          fontSize: isEasy ? 13 : 12,
+                          color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.primary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 最新のお知らせセクション ────────────────────────────────────
+
+class _RecentNoticesSection extends ConsumerWidget {
+  final ThemeData theme;
+  final bool isEasy;
+  const _RecentNoticesSection({required this.theme, required this.isEasy});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recentAsync = ref.watch(recentNoticesProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '最新のお知らせ',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryDark,
+                fontSize: isEasy ? 16 : null,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => context.push('/notices'),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('すべて見る'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        recentAsync.when(
+          data: (notices) {
+            if (notices.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: Text(
+                    '最新のお知らせはありません',
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: isEasy ? 15 : 13),
+                  ),
+                ),
+              );
+            }
+            return Card(
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: notices.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 52),
+                itemBuilder: (ctx, i) =>
+                    _RecentNoticeTile(notice: notices[i], isEasy: isEasy),
+              ),
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          error: (_, __) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              '取得に失敗しました',
+              style: TextStyle(color: Colors.red[400], fontSize: 13),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── 最新お知らせタイル ───────────────────────────────────────────
+
+class _RecentNoticeTile extends StatelessWidget {
+  final NoticeModel notice;
+  final bool isEasy;
+  const _RecentNoticeTile({required this.notice, required this.isEasy});
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel =
+        DateFormat('MM/dd').format(notice.createdAt.toLocal());
+
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: notice.isPinned
+              ? AppColors.accent.withOpacity(0.15)
+              : AppColors.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          notice.isPinned
+              ? Icons.push_pin_rounded
+              : Icons.notifications_rounded,
+          color: notice.isPinned ? AppColors.accent : AppColors.primary,
+          size: 18,
+        ),
+      ),
+      title: Text(
+        notice.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: isEasy ? 15 : 13,
+          fontWeight:
+              notice.isRead ? FontWeight.normal : FontWeight.bold,
+          color: notice.isRead ? Colors.grey[600] : Colors.black87,
+        ),
+      ),
+      subtitle: Text(
+        dateLabel,
+        style: TextStyle(
+            fontSize: isEasy ? 13 : 11, color: Colors.grey[500]),
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded,
+          color: AppColors.primary, size: 20),
+      onTap: () => context.push('/notices/${notice.id}'),
+    );
+  }
+}
+
 // ─── 最新の回覧物セクション ─────────────────────────────────────
 
 class _RecentFilesSection extends ConsumerWidget {
   final ThemeData theme;
-  const _RecentFilesSection({required this.theme});
+  final bool isEasy;
+  const _RecentFilesSection({required this.theme, required this.isEasy});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -170,6 +461,7 @@ class _RecentFilesSection extends ConsumerWidget {
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: AppColors.primaryDark,
+                fontSize: isEasy ? 16 : null,
               ),
             ),
             TextButton.icon(
@@ -193,7 +485,9 @@ class _RecentFilesSection extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     '最新の回覧物はありません',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: isEasy ? 15 : 13),
                   ),
                 ),
               );
@@ -206,7 +500,7 @@ class _RecentFilesSection extends ConsumerWidget {
                 separatorBuilder: (_, __) =>
                     const Divider(height: 1, indent: 52),
                 itemBuilder: (ctx, i) =>
-                    _RecentFileTile(file: files[i]),
+                    _RecentFileTile(file: files[i], isEasy: isEasy),
               ),
             );
           },
@@ -233,7 +527,8 @@ class _RecentFilesSection extends ConsumerWidget {
 
 class _RecentFileTile extends StatelessWidget {
   final FileModel file;
-  const _RecentFileTile({required this.file});
+  final bool isEasy;
+  const _RecentFileTile({required this.file, required this.isEasy});
 
   static const _monthLabels = [
     '1月', '2月', '3月', '4月', '5月', '6月',
@@ -280,11 +575,12 @@ class _RecentFileTile extends StatelessWidget {
         file.originalFilename,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13),
+        style: TextStyle(fontSize: isEasy ? 15 : 13),
       ),
       subtitle: Text(
         '${file.year}年${_monthLabels[file.month - 1]}　${file.fileSizeLabel}',
-        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+        style: TextStyle(
+            fontSize: isEasy ? 13 : 11, color: Colors.grey[500]),
       ),
       trailing: const Icon(Icons.chevron_right_rounded,
           color: AppColors.primary, size: 20),
@@ -299,11 +595,13 @@ class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final bool isEasy;
 
   const _InfoRow({
     required this.icon,
     required this.label,
     required this.value,
+    required this.isEasy,
   });
 
   @override
@@ -321,9 +619,15 @@ class _InfoRow extends StatelessWidget {
               label,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
+                fontSize: isEasy ? 13 : null,
               ),
             ),
-            Text(value, style: theme.textTheme.bodyMedium),
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontSize: isEasy ? 15 : null,
+              ),
+            ),
           ],
         ),
       ],
@@ -338,12 +642,14 @@ class _MenuCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final bool isEasy;
 
   const _MenuCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    required this.isEasy,
   });
 
   @override
@@ -370,17 +676,25 @@ class _MenuCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isEasy ? 16 : 15,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(subtitle,
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                          fontSize: isEasy ? 13 : 12,
+                          color: Colors.grey[600]),
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.primary),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.primary),
             ],
           ),
         ),
