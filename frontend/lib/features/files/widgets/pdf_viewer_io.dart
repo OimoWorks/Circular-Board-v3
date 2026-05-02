@@ -70,7 +70,6 @@ class _PdfViewerIoState extends State<PdfViewer> {
             defaultPage: 0,
             fitPolicy: FitPolicy.BOTH, // 1ページを画面に収める
             preventLinkNavigation: false,
-            backgroundColor: const Color(0xFF616161),
             onViewCreated: (PDFViewController c) {
               _pdfController = c;
             },
