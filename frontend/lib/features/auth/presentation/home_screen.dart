@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../main.dart';
+import '../../files/data/models/file_model.dart';
+import '../../files/providers/file_provider.dart';
 import 'auth_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -26,10 +28,7 @@ class HomeScreen extends ConsumerWidget {
             SizedBox(width: 8),
             Text(
               '回覧板',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2),
             ),
           ],
         ),
@@ -51,56 +50,55 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ユーザー情報カード
+            // ─── ユーザー情報カード ──────────────────────────────
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         CircleAvatar(
-                          radius: 28,
+                          radius: 26,
                           backgroundColor: AppColors.primary.withOpacity(0.12),
-                          child: const Icon(
-                            Icons.person_rounded,
-                            size: 32,
-                            color: AppColors.primary,
-                          ),
+                          child: const Icon(Icons.person_rounded,
+                              size: 30, color: AppColors.primary),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 user.name,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
-                              _RoleBadge(role: user.role, label: user.roleLabel),
+                              _RoleBadge(
+                                  role: user.role, label: user.roleLabel),
                             ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     const Divider(),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     _InfoRow(
                       icon: Icons.email_rounded,
                       label: 'メールアドレス',
                       value: user.email,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     _InfoRow(
                       icon: Icons.home_work_rounded,
                       label: '所属自治会',
@@ -110,15 +108,19 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-            // メニューカード
+            // ─── メニュー：回覧物 ────────────────────────────────
             _MenuCard(
               icon: Icons.folder_rounded,
-              title: 'ファイル管理',
-              subtitle: '回覧資料のアップロード・ダウンロード',
+              title: '回覧物',
+              subtitle: '回覧資料のアップロード、プレビュー、ダウンロード',
               onTap: () => context.push('/files'),
             ),
+            const SizedBox(height: 20),
+
+            // ─── 最新の回覧物 ────────────────────────────────────
+            _RecentFilesSection(theme: theme),
           ],
         ),
       ),
@@ -147,6 +149,152 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+// ─── 最新の回覧物セクション ─────────────────────────────────────
+
+class _RecentFilesSection extends ConsumerWidget {
+  final ThemeData theme;
+  const _RecentFilesSection({required this.theme});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recentAsync = ref.watch(recentFilesProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '最新の回覧物',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryDark,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => context.push('/files'),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text('すべて見る'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        recentAsync.when(
+          data: (files) {
+            if (files.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    '最新の回覧物はありません',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                  ),
+                ),
+              );
+            }
+            return Card(
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: files.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 52),
+                itemBuilder: (ctx, i) =>
+                    _RecentFileTile(file: files[i]),
+              ),
+            );
+          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+          error: (_, __) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              '取得に失敗しました',
+              style: TextStyle(color: Colors.red[400], fontSize: 13),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── 最新回覧物タイル ───────────────────────────────────────────
+
+class _RecentFileTile extends StatelessWidget {
+  final FileModel file;
+  const _RecentFileTile({required this.file});
+
+  static const _monthLabels = [
+    '1月', '2月', '3月', '4月', '5月', '6月',
+    '7月', '8月', '9月', '10月', '11月', '12月',
+  ];
+
+  IconData get _icon {
+    switch (file.mimeType) {
+      case 'application/pdf':
+        return Icons.picture_as_pdf_rounded;
+      case 'image/jpeg':
+      case 'image/png':
+        return Icons.image_rounded;
+      default:
+        return Icons.insert_drive_file_rounded;
+    }
+  }
+
+  Color get _iconColor {
+    switch (file.mimeType) {
+      case 'application/pdf':
+        return Colors.red[700]!;
+      case 'image/jpeg':
+      case 'image/png':
+        return Colors.blue[600]!;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: _iconColor.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(_icon, color: _iconColor, size: 20),
+      ),
+      title: Text(
+        file.originalFilename,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 13),
+      ),
+      subtitle: Text(
+        '${file.year}年${_monthLabels[file.month - 1]}　${file.fileSizeLabel}',
+        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded,
+          color: AppColors.primary, size: 20),
+      onTap: () => context.push('/files/preview', extra: file),
+    );
+  }
+}
+
+// ─── ユーザー情報行 ─────────────────────────────────────────────
+
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -164,8 +312,8 @@ class _InfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: AppColors.primary),
-        const SizedBox(width: 12),
+        Icon(icon, size: 18, color: AppColors.primary),
+        const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -182,6 +330,8 @@ class _InfoRow extends StatelessWidget {
     );
   }
 }
+
+// ─── メニューカード ─────────────────────────────────────────────
 
 class _MenuCard extends StatelessWidget {
   final IconData icon;
@@ -203,28 +353,30 @@ class _MenuCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.primary.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(11),
                 ),
-                child: const Icon(Icons.folder_rounded, color: AppColors.primary, size: 26),
+                child: Icon(icon, color: AppColors.primary, size: 24),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 2),
                     Text(subtitle,
-                        style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        style:
+                            TextStyle(fontSize: 12, color: Colors.grey[600])),
                   ],
                 ),
               ),
@@ -237,10 +389,11 @@ class _MenuCard extends StatelessWidget {
   }
 }
 
+// ─── ロールバッジ ───────────────────────────────────────────────
+
 class _RoleBadge extends StatelessWidget {
   final String role;
   final String label;
-
   const _RoleBadge({required this.role, required this.label});
 
   Color _bgColor() {
@@ -276,10 +429,7 @@ class _RoleBadge extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: _fgColor(),
-        ),
+            fontSize: 12, fontWeight: FontWeight.w600, color: _fgColor()),
       ),
     );
   }

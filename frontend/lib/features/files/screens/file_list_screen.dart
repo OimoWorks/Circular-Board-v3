@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../main.dart';
 import '../../auth/presentation/auth_provider.dart';
@@ -15,10 +16,7 @@ class FileListScreen extends ConsumerStatefulWidget {
 }
 
 class _FileListScreenState extends ConsumerState<FileListScreen> {
-  int _selectedYear = 0;
-  int _selectedMonth = 0;
-
-  static const _months = [
+  static const _monthLabels = [
     '1月', '2月', '3月', '4月', '5月', '6月',
     '7月', '8月', '9月', '10月', '11月', '12月',
   ];
@@ -31,7 +29,67 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
     });
   }
 
-  Future<void> _pickAndUpload() async {
+  // ─── アップロード ──────────────────────────────────────────────
+
+  Future<void> _showUploadDialog() async {
+    final now = DateTime.now();
+    int selectedYear = now.year;
+    int selectedMonth = now.month;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => AlertDialog(
+          title: const Text('アップロード先を選択'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                decoration: const InputDecoration(labelText: '年'),
+                value: selectedYear,
+                items: List.generate(5, (i) => now.year - i)
+                    .map((y) => DropdownMenuItem(
+                          value: y,
+                          child: Text('$y年'),
+                        ))
+                    .toList(),
+                onChanged: (v) =>
+                    setDlgState(() => selectedYear = v ?? selectedYear),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                decoration: const InputDecoration(labelText: '月'),
+                value: selectedMonth,
+                items: List.generate(12, (i) => i + 1)
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(_monthLabels[m - 1]),
+                        ))
+                    .toList(),
+                onChanged: (v) =>
+                    setDlgState(() => selectedMonth = v ?? selectedMonth),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('キャンセル'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('ファイルを選択'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await _pickAndUpload(year: selectedYear, month: selectedMonth);
+  }
+
+  Future<void> _pickAndUpload({required int year, required int month}) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
@@ -42,7 +100,7 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
     final picked = result.files.first;
     if (picked.bytes == null) return;
 
-    final mimeType = _mimeTypeFromExtension(picked.extension ?? '');
+    final mimeType = _mimeFromExtension(picked.extension ?? '');
     if (mimeType == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -52,10 +110,6 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
       return;
     }
 
-    final now = DateTime.now();
-    final year = _selectedYear != 0 ? _selectedYear : now.year;
-    final month = _selectedMonth != 0 ? _selectedMonth : now.month;
-
     final notifier = ref.read(fileNotifierProvider);
     final ok = await notifier.upload(
       filename: picked.name,
@@ -64,18 +118,19 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
       year: year,
       month: month,
     );
-
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok ? 'アップロードしました' : (notifier.errorMessage ?? 'アップロードに失敗しました')),
+          content: Text(ok
+              ? 'アップロードしました'
+              : (notifier.errorMessage ?? 'アップロードに失敗しました')),
           backgroundColor: ok ? AppColors.primary : Colors.red,
         ),
       );
     }
   }
 
-  String? _mimeTypeFromExtension(String ext) {
+  String? _mimeFromExtension(String ext) {
     switch (ext.toLowerCase()) {
       case 'pdf':
         return 'application/pdf';
@@ -88,6 +143,8 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
         return null;
     }
   }
+
+  // ─── 削除 ──────────────────────────────────────────────────────
 
   Future<void> _confirmDelete(FileModel file) async {
     final confirmed = await showDialog<bool>(
@@ -115,19 +172,23 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok ? '削除しました' : (notifier.errorMessage ?? '削除に失敗しました')),
+          content: Text(ok
+              ? '削除しました'
+              : (notifier.errorMessage ?? '削除に失敗しました')),
           backgroundColor: ok ? AppColors.primary : Colors.red,
         ),
       );
     }
   }
 
+  // ─── ビルド ────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final notifier = ref.watch(fileNotifierProvider);
-    final yearsAsync = ref.watch(availableYearsProvider);
-    final canAdmin = user?.role == 'association_admin' || user?.role == 'system_admin';
+    final canAdmin =
+        user?.role == 'association_admin' || user?.role == 'system_admin';
 
     return Scaffold(
       appBar: AppBar(
@@ -135,7 +196,7 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
           children: [
             Icon(Icons.folder_rounded, size: 22, color: Colors.white),
             SizedBox(width: 8),
-            Text('ファイル管理', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('回覧物', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         backgroundColor: AppColors.primary,
@@ -144,130 +205,25 @@ class _FileListScreenState extends ConsumerState<FileListScreen> {
       ),
       floatingActionButton: canAdmin
           ? FloatingActionButton.extended(
-              onPressed: notifier.isUploading ? null : _pickAndUpload,
+              onPressed: notifier.isUploading ? null : _showUploadDialog,
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               icon: notifier.isUploading
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.upload_file_rounded),
               label: const Text('アップロード'),
             )
           : null,
-      body: Column(
-        children: [
-          _FilterBar(
-            selectedYear: _selectedYear,
-            selectedMonth: _selectedMonth,
-            yearsAsync: yearsAsync,
-            months: _months,
-            onYearChanged: (y) {
-              setState(() {
-                _selectedYear = y;
-                _selectedMonth = 0;
-              });
-              ref.read(fileNotifierProvider).loadFiles(year: y, month: 0);
-            },
-            onMonthChanged: (m) {
-              setState(() => _selectedMonth = m);
-              ref.read(fileNotifierProvider).loadFiles(year: _selectedYear, month: m);
-            },
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: _FileListBody(
-              notifier: notifier,
-              canAdmin: canAdmin,
-              months: _months,
-              onDownload: (f) => ref.read(fileNotifierProvider).download(f),
-              onDelete: _confirmDelete,
-            ),
-          ),
-        ],
-      ),
+      body: _buildBody(notifier, canAdmin),
     );
   }
-}
 
-class _FilterBar extends StatelessWidget {
-  final int selectedYear;
-  final int selectedMonth;
-  final AsyncValue<List<int>> yearsAsync;
-  final List<String> months;
-  final ValueChanged<int> onYearChanged;
-  final ValueChanged<int> onMonthChanged;
-
-  const _FilterBar({
-    required this.selectedYear,
-    required this.selectedMonth,
-    required this.yearsAsync,
-    required this.months,
-    required this.onYearChanged,
-    required this.onMonthChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.primary.withOpacity(0.04),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          const Icon(Icons.filter_list_rounded, size: 18, color: AppColors.primary),
-          const SizedBox(width: 8),
-          yearsAsync.when(
-            data: (years) => DropdownButton<int>(
-              value: selectedYear,
-              isDense: true,
-              underline: const SizedBox(),
-              items: [
-                const DropdownMenuItem(value: 0, child: Text('すべての年')),
-                ...years.map((y) => DropdownMenuItem(value: y, child: Text('$y年'))),
-              ],
-              onChanged: (v) => onYearChanged(v ?? 0),
-            ),
-            loading: () => const SizedBox(width: 80, child: LinearProgressIndicator()),
-            error: (_, __) => const Text('年の取得失敗'),
-          ),
-          const SizedBox(width: 16),
-          DropdownButton<int>(
-            value: selectedMonth,
-            isDense: true,
-            underline: const SizedBox(),
-            items: [
-              const DropdownMenuItem(value: 0, child: Text('すべての月')),
-              ...List.generate(12, (i) => i + 1).map(
-                (m) => DropdownMenuItem(value: m, child: Text(months[m - 1])),
-              ),
-            ],
-            onChanged: selectedYear == 0 ? null : (v) => onMonthChanged(v ?? 0),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FileListBody extends StatelessWidget {
-  final FileNotifier notifier;
-  final bool canAdmin;
-  final List<String> months;
-  final Future<void> Function(FileModel) onDownload;
-  final Future<void> Function(FileModel) onDelete;
-
-  const _FileListBody({
-    required this.notifier,
-    required this.canAdmin,
-    required this.months,
-    required this.onDownload,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildBody(FileNotifier notifier, bool canAdmin) {
     if (notifier.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -276,9 +232,11 @@ class _FileListBody extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+            const Icon(Icons.error_outline_rounded,
+                size: 48, color: Colors.red),
             const SizedBox(height: 12),
-            Text(notifier.errorMessage!, style: const TextStyle(color: Colors.red)),
+            Text(notifier.errorMessage!,
+                style: const TextStyle(color: Colors.red)),
           ],
         ),
       );
@@ -290,49 +248,161 @@ class _FileListBody extends StatelessWidget {
           children: [
             Icon(Icons.folder_open_rounded, size: 64, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            Text('ファイルがありません', style: TextStyle(color: Colors.grey[500])),
+            Text('回覧物がありません',
+                style: TextStyle(color: Colors.grey[500])),
           ],
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: notifier.files.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, indent: 56),
-      itemBuilder: (ctx, i) {
-        final file = notifier.files[i];
-        return _FileListTile(
-          file: file,
-          canAdmin: canAdmin,
-          months: months,
-          isDownloading: notifier.isDownloading,
-          onDownload: () => onDownload(file),
-          onDelete: () => onDelete(file),
+    final grouped = notifier.filesGrouped;
+    final sortedYears = notifier.sortedYears;
+    final latestYear = sortedYears.first;
+    final latestMonth = notifier.sortedMonths(latestYear).first;
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 88),
+      itemCount: sortedYears.length,
+      itemBuilder: (ctx, yi) {
+        final year = sortedYears[yi];
+        final isLatestYear = year == latestYear;
+        final monthsInYear = notifier.sortedMonths(year);
+
+        return _YearGroup(
+          year: year,
+          initiallyExpanded: isLatestYear,
+          children: monthsInYear.map((month) {
+            final files = grouped[year]![month]!;
+            final isLatestMonth = isLatestYear && month == latestMonth;
+
+            return _MonthGroup(
+              monthLabel: _monthLabels[month - 1],
+              fileCount: files.length,
+              initiallyExpanded: isLatestMonth,
+              children: files
+                  .map((f) => _FileTile(
+                        file: f,
+                        canAdmin: canAdmin,
+                        onPreview: () =>
+                            context.push('/files/preview', extra: f),
+                        onDownload: () =>
+                            ref.read(fileNotifierProvider).download(f),
+                        onDelete: () => _confirmDelete(f),
+                      ))
+                  .toList(),
+            );
+          }).toList(),
         );
       },
     );
   }
 }
 
-class _FileListTile extends StatelessWidget {
+// ─── 年グループ ────────────────────────────────────────────────
+
+class _YearGroup extends StatelessWidget {
+  final int year;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  const _YearGroup({
+    required this.year,
+    required this.initiallyExpanded,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: const Icon(Icons.calendar_today_rounded,
+              color: AppColors.primary, size: 20),
+          title: Text(
+            '$year年',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: AppColors.primaryDark),
+          ),
+          initiallyExpanded: initiallyExpanded,
+          iconColor: AppColors.primary,
+          collapsedIconColor: AppColors.primary,
+          childrenPadding:
+              const EdgeInsets.only(left: 8, right: 8, bottom: 8),
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 月グループ ────────────────────────────────────────────────
+
+class _MonthGroup extends StatelessWidget {
+  final String monthLabel;
+  final int fileCount;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  const _MonthGroup({
+    required this.monthLabel,
+    required this.fileCount,
+    required this.initiallyExpanded,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        leading: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Icon(Icons.event_note_rounded,
+              color: AppColors.primaryLight, size: 16),
+        ),
+        title: Text(
+          '$monthLabel　$fileCount件',
+          style: const TextStyle(fontSize: 14, color: AppColors.primaryDark),
+        ),
+        initiallyExpanded: initiallyExpanded,
+        iconColor: AppColors.primaryLight,
+        collapsedIconColor: AppColors.primaryLight,
+        childrenPadding: const EdgeInsets.only(left: 12, bottom: 4),
+        children: children,
+      ),
+    );
+  }
+}
+
+// ─── ファイルタイル ────────────────────────────────────────────
+
+class _FileTile extends StatelessWidget {
   final FileModel file;
   final bool canAdmin;
-  final List<String> months;
-  final bool isDownloading;
+  final VoidCallback onPreview;
   final VoidCallback onDownload;
   final VoidCallback onDelete;
 
-  const _FileListTile({
+  const _FileTile({
     required this.file,
     required this.canAdmin,
-    required this.months,
-    required this.isDownloading,
+    required this.onPreview,
     required this.onDownload,
     required this.onDelete,
   });
 
-  IconData get _fileIcon {
+  IconData get _icon {
     switch (file.mimeType) {
       case 'application/pdf':
         return Icons.picture_as_pdf_rounded;
@@ -344,7 +414,7 @@ class _FileListTile extends StatelessWidget {
     }
   }
 
-  Color get _fileIconColor {
+  Color get _iconColor {
     switch (file.mimeType) {
       case 'application/pdf':
         return Colors.red[700]!;
@@ -358,54 +428,64 @@ class _FileListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final monthLabel = months[file.month - 1];
-
-    return ListTile(
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: _fileIconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(_fileIcon, color: _fileIconColor, size: 22),
-      ),
-      title: Text(
-        file.originalFilename,
-        style: const TextStyle(fontWeight: FontWeight.w500),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        '${file.year}年$monthLabel ・ ${file.fileSizeLabel}',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: isDownloading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.download_rounded),
-            tooltip: 'ダウンロード',
-            color: AppColors.primary,
-            onPressed: isDownloading ? null : onDownload,
-          ),
-          if (canAdmin)
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded),
-              tooltip: '削除',
-              color: Colors.red[700],
-              onPressed: onDelete,
+    return InkWell(
+      onTap: onPreview,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: _iconColor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(_icon, color: _iconColor, size: 18),
             ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.originalFilename,
+                    style: const TextStyle(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    file.fileSizeLabel,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            ),
+            // プレビューボタン
+            IconButton(
+              icon: const Icon(Icons.visibility_rounded, size: 19),
+              tooltip: 'プレビュー',
+              color: AppColors.primaryLight,
+              onPressed: onPreview,
+            ),
+            // ダウンロードボタン
+            IconButton(
+              icon: const Icon(Icons.download_rounded, size: 19),
+              tooltip: 'ダウンロード',
+              color: AppColors.primary,
+              onPressed: onDownload,
+            ),
+            // 削除ボタン（管理者のみ）
+            if (canAdmin)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                tooltip: '削除',
+                color: Colors.red[600],
+                onPressed: onDelete,
+              ),
+          ],
+        ),
       ),
     );
   }

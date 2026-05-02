@@ -21,6 +21,13 @@ final availableYearsProvider = FutureProvider<List<int>>((ref) async {
   return repo.listAvailableYears();
 });
 
+// ホーム画面用: 最新5件（フィルタなしで全件取得し先頭5件）
+final recentFilesProvider = FutureProvider.autoDispose<List<FileModel>>((ref) async {
+  final repo = ref.watch(fileRepositoryProvider);
+  final files = await repo.list();
+  return files.take(5).toList();
+});
+
 class FileNotifier extends ChangeNotifier {
   final FileRepository _repo;
 
@@ -29,8 +36,6 @@ class FileNotifier extends ChangeNotifier {
   bool _isUploading = false;
   bool _isDownloading = false;
   String? _errorMessage;
-  int _selectedYear = 0;
-  int _selectedMonth = 0;
 
   FileNotifier(this._repo);
 
@@ -39,14 +44,36 @@ class FileNotifier extends ChangeNotifier {
   bool get isUploading => _isUploading;
   bool get isDownloading => _isDownloading;
   String? get errorMessage => _errorMessage;
-  int get selectedYear => _selectedYear;
-  int get selectedMonth => _selectedMonth;
+
+  // ─── ツリー表示用 ───────────────────────────────────────────────
+
+  /// year → month → files のマップ（キーは降順ソート済み）
+  Map<int, Map<int, List<FileModel>>> get filesGrouped {
+    final result = <int, Map<int, List<FileModel>>>{};
+    for (final f in _files) {
+      result.putIfAbsent(f.year, () => {});
+      result[f.year]!.putIfAbsent(f.month, () => []);
+      result[f.year]![f.month]!.add(f);
+    }
+    return result;
+  }
+
+  /// 年リスト（降順）
+  List<int> get sortedYears {
+    return filesGrouped.keys.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  /// 指定年の月リスト（降順）
+  List<int> sortedMonths(int year) {
+    final months = filesGrouped[year]?.keys.toList() ?? [];
+    return months..sort((a, b) => b.compareTo(a));
+  }
+
+  // ─── 操作 ──────────────────────────────────────────────────────
 
   Future<void> loadFiles({int year = 0, int month = 0}) async {
     _isLoading = true;
     _errorMessage = null;
-    _selectedYear = year;
-    _selectedMonth = month;
     notifyListeners();
 
     try {
@@ -82,7 +109,7 @@ class FileNotifier extends ChangeNotifier {
         year: year,
         month: month,
       );
-      await loadFiles(year: _selectedYear, month: _selectedMonth);
+      await loadFiles();
       return true;
     } on FileException catch (e) {
       _errorMessage = e.message;
