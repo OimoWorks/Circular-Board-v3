@@ -193,8 +193,9 @@ class _Logo extends StatelessWidget {
         const Text(
           '回覧板',
           style: TextStyle(
+            fontFamily: 'Noto Sans JP',
             fontSize: 32,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: 4,
           ),

@@ -48,6 +48,7 @@ class _CircularBoardAppState extends ConsumerState<CircularBoardApp> {
           secondary: AppColors.primaryLight,
           tertiary: AppColors.accent,
         ),
+        fontFamily: 'Noto Sans JP',
         useMaterial3: true,
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.primary,
