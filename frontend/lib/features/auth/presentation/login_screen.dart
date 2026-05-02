@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../main.dart';
 import 'auth_provider.dart';
@@ -190,10 +191,9 @@ class _Logo extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           '回覧板',
-          style: TextStyle(
-            fontFamily: 'Noto Sans JP',
+          style: GoogleFonts.notoSansJp(
             fontSize: 32,
             fontWeight: FontWeight.w700,
             color: Colors.white,
