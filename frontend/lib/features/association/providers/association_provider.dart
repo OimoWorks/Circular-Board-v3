@@ -11,6 +11,12 @@ final associationManagementRepositoryProvider =
   return AssociationManagementRepository(client);
 });
 
+final allAssociationsProvider =
+    FutureProvider<List<AssociationDetail>>((ref) async {
+  final repo = ref.watch(associationManagementRepositoryProvider);
+  return repo.list();
+});
+
 final associationManagementNotifierProvider =
     ChangeNotifierProvider<AssociationManagementNotifier>((ref) {
   final repo = ref.watch(associationManagementRepositoryProvider);
