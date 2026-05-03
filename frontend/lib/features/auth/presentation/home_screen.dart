@@ -10,6 +10,10 @@ import '../../notice/data/models/notice_model.dart';
 import '../../notice/providers/notice_provider.dart';
 import 'auth_provider.dart';
 
+// 管理メニューを表示するロールかどうか
+bool _isAdmin(String role) =>
+    role == 'association_admin' || role == 'system_admin';
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -144,7 +148,35 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => context.push('/files'),
               isEasy: isEasy,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
+
+            // ─── 管理メニュー（association_admin 以上） ──────────
+            if (_isAdmin(user.role)) ...[
+              _MenuCard(
+                icon: Icons.manage_accounts_rounded,
+                title: 'アカウント管理',
+                subtitle: '自治会メンバーのアカウントを登録・管理する',
+                onTap: () => context.push('/accounts'),
+                isEasy: isEasy,
+                color: const Color(0xFF2D6A4F),
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            // ─── 自治会管理（system_admin のみ） ─────────────────
+            if (user.role == 'system_admin') ...[
+              _MenuCard(
+                icon: Icons.home_work_rounded,
+                title: '自治会管理',
+                subtitle: '自治会の登録・編集・有効無効の管理',
+                onTap: () => context.push('/associations'),
+                isEasy: isEasy,
+                color: const Color(0xFF1B4332),
+              ),
+              const SizedBox(height: 10),
+            ],
+
+            const SizedBox(height: 10),
 
             // ─── 最新のお知らせ ──────────────────────────────────
             _RecentNoticesSection(theme: theme, isEasy: isEasy),
@@ -643,6 +675,7 @@ class _MenuCard extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
   final bool isEasy;
+  final Color? color;
 
   const _MenuCard({
     required this.icon,
@@ -650,10 +683,12 @@ class _MenuCard extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
     required this.isEasy,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final c = color ?? AppColors.primary;
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -666,10 +701,10 @@ class _MenuCard extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.10),
+                  color: c.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(11),
                 ),
-                child: Icon(icon, color: AppColors.primary, size: 24),
+                child: Icon(icon, color: c, size: 24),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -693,8 +728,7 @@ class _MenuCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.primary),
+              Icon(Icons.chevron_right_rounded, color: c),
             ],
           ),
         ),

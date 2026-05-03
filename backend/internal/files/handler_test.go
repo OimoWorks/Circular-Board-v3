@@ -7,9 +7,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"circular-board/internal/domain"
+	"circular-board/internal/files"
+	"circular-board/internal/middleware"
+	"circular-board/internal/repository"
+	"circular-board/internal/service"
 )
 
 // ═══════════════════════════════════════════════════════════

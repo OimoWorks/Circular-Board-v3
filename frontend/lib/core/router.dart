@@ -11,6 +11,12 @@ import '../features/files/screens/file_preview_screen.dart';
 import '../features/notice/screens/notice_create_screen.dart';
 import '../features/notice/screens/notice_detail_screen.dart';
 import '../features/notice/screens/notice_list_screen.dart';
+import '../features/account/data/models/account_model.dart';
+import '../features/account/screens/account_list_screen.dart';
+import '../features/account/screens/account_form_screen.dart';
+import '../features/association/data/models/association_model.dart';
+import '../features/association/screens/association_list_screen.dart';
+import '../features/association/screens/association_form_screen.dart';
 
 // GoRouterはAuthNotifierをlistenable登録して認証状態変化で再評価する
 final routerProvider = Provider<GoRouter>((ref) {
@@ -62,6 +68,41 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = state.pathParameters['id']!;
           return NoticeDetailScreen(noticeId: id);
+        },
+      ),
+      // ─── アカウント管理 ───────────────────────────────────────
+      GoRoute(
+        path: '/accounts',
+        builder: (context, state) => const AccountListScreen(),
+      ),
+      GoRoute(
+        path: '/accounts/create',
+        builder: (context, state) {
+          final preselectedAssocId = state.extra as String?;
+          return AccountFormScreen(preselectedAssociationId: preselectedAssocId);
+        },
+      ),
+      GoRoute(
+        path: '/accounts/:id/edit',
+        builder: (context, state) {
+          final account = state.extra as AccountModel;
+          return AccountFormScreen(account: account);
+        },
+      ),
+      // ─── 自治会管理 ───────────────────────────────────────────
+      GoRoute(
+        path: '/associations',
+        builder: (context, state) => const AssociationListScreen(),
+      ),
+      GoRoute(
+        path: '/associations/create',
+        builder: (context, state) => const AssociationFormScreen(),
+      ),
+      GoRoute(
+        path: '/associations/:id/edit',
+        builder: (context, state) {
+          final assoc = state.extra as AssociationDetail;
+          return AssociationFormScreen(association: assoc);
         },
       ),
     ],

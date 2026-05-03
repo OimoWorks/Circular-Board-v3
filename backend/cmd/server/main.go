@@ -14,6 +14,8 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"circular-board/internal/account"
+	"circular-board/internal/association"
 	"circular-board/internal/config"
 	"circular-board/internal/db"
 	"circular-board/internal/domain"
@@ -56,6 +58,14 @@ func main() {
 	noticeSvc := notice.NewService(noticeRepo)
 	noticeHandler := notice.NewHandler(noticeSvc)
 
+	accountRepo := account.NewRepository(pool)
+	accountSvc := account.NewService(accountRepo)
+	accountHandler := account.NewHandler(accountSvc)
+
+	assocRepo := association.NewRepository(pool)
+	assocSvc := association.NewService(assocRepo)
+	assocHandler := association.NewHandler(assocSvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -87,10 +97,28 @@ func main() {
 			})
 		})
 
+		// 自治会管理（system_admin 専用）
 		r.Route("/associations", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
 			r.Use(authMiddleware.RequireRole(domain.RoleSystemAdmin))
-			r.Get("/", fileHandler.ListAssociations)
+			r.Get("/", assocHandler.List)
+			r.Post("/", assocHandler.Create)
+			r.Put("/{id}", assocHandler.Update)
+			r.Delete("/{id}", assocHandler.Delete)
+			r.Put("/{id}/activate", assocHandler.Activate)
+			r.Put("/{id}/deactivate", assocHandler.Deactivate)
+		})
+
+		// アカウント管理（association_admin 以上）
+		r.Route("/accounts", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+			r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
+			r.Get("/", accountHandler.List)
+			r.Post("/", accountHandler.Create)
+			r.Put("/{id}", accountHandler.Update)
+			r.Delete("/{id}", accountHandler.Delete)
+			r.Put("/{id}/activate", accountHandler.Activate)
+			r.Put("/{id}/deactivate", accountHandler.Deactivate)
 		})
 
 		r.Route("/notices", func(r chi.Router) {
