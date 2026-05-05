@@ -38,7 +38,8 @@ func (r *UserRepository) FindByEmailAndAssociationCode(ctx context.Context, emai
 		LEFT JOIN associations a ON u.association_id = a.id
 		WHERE u.email = $1
 		  AND (a.code = $2 OR (u.role = 'system_admin' AND $2 = ''))
-		  AND u.is_active = true`
+		  AND u.is_active = true
+		  AND (u.role = 'system_admin' OR a.is_active = true)`
 
 	row := r.pool.QueryRow(ctx, query, email, associationCode)
 	return scanUserWithAssociation(row)

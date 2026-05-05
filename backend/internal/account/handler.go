@@ -157,7 +157,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /api/v1/accounts/:id  → 論理削除（is_active=false）
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	callerRole, callerAssocID, ok := h.mustCaller(w, r)
+	callerRole, callerAssocID, callerUserID, ok := h.mustCallerFull(w, r)
 	if !ok {
 		return
 	}
@@ -166,9 +166,11 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := h.svc.Deactivate(r.Context(), callerRole, callerAssocID, id); {
+	switch err := h.svc.Deactivate(r.Context(), callerRole, callerAssocID, callerUserID, id); {
 	case err == nil:
 		respondJSON(w, http.StatusOK, map[string]string{"message": "無効化しました"})
+	case errors.Is(err, ErrSelfDeactivation):
+		respondError(w, http.StatusBadRequest, "CANNOT_DELETE_SELF", "自分自身を削除することはできません")
 	case errors.Is(err, ErrNotFound):
 		respondError(w, http.StatusNotFound, "ACCOUNT_NOT_FOUND", "アカウントが見つかりません")
 	default:
@@ -199,7 +201,7 @@ func (h *Handler) Activate(w http.ResponseWriter, r *http.Request) {
 
 // PUT /api/v1/accounts/:id/deactivate
 func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
-	callerRole, callerAssocID, ok := h.mustCaller(w, r)
+	callerRole, callerAssocID, callerUserID, ok := h.mustCallerFull(w, r)
 	if !ok {
 		return
 	}
@@ -208,9 +210,11 @@ func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err := h.svc.Deactivate(r.Context(), callerRole, callerAssocID, id); {
+	switch err := h.svc.Deactivate(r.Context(), callerRole, callerAssocID, callerUserID, id); {
 	case err == nil:
 		respondJSON(w, http.StatusOK, map[string]string{"message": "無効化しました"})
+	case errors.Is(err, ErrSelfDeactivation):
+		respondError(w, http.StatusBadRequest, "CANNOT_DELETE_SELF", "自分自身を無効化することはできません")
 	case errors.Is(err, ErrNotFound):
 		respondError(w, http.StatusNotFound, "ACCOUNT_NOT_FOUND", "アカウントが見つかりません")
 	default:
@@ -223,20 +227,31 @@ func (h *Handler) Deactivate(w http.ResponseWriter, r *http.Request) {
 // mustCaller は JWT クレームからロールと自治会 ID を取り出す。
 // system_admin は association_id が nil になる。
 func (h *Handler) mustCaller(w http.ResponseWriter, r *http.Request) (role domain.Role, assocID *uuid.UUID, ok bool) {
+	role, assocID, _, ok = h.mustCallerFull(w, r)
+	return
+}
+
+// mustCallerFull はロール・自治会ID・ユーザーIDをすべて取り出す。
+func (h *Handler) mustCallerFull(w http.ResponseWriter, r *http.Request) (role domain.Role, assocID *uuid.UUID, userID uuid.UUID, ok bool) {
 	claims := middleware.ClaimsFromContext(r.Context())
 	if claims == nil {
 		respondError(w, http.StatusUnauthorized, "UNAUTHORIZED", "認証が必要です")
-		return "", nil, false
+		return "", nil, uuid.Nil, false
+	}
+	uID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		respondError(w, http.StatusForbidden, "FORBIDDEN", "ユーザー ID が不正です")
+		return "", nil, uuid.Nil, false
 	}
 	if claims.AssociationID != "" {
 		id, err := uuid.Parse(claims.AssociationID)
 		if err != nil {
 			respondError(w, http.StatusForbidden, "FORBIDDEN", "自治会 ID が不正です")
-			return "", nil, false
+			return "", nil, uuid.Nil, false
 		}
 		assocID = &id
 	}
-	return domain.Role(claims.Role), assocID, true
+	return domain.Role(claims.Role), assocID, uID, true
 }
 
 func (h *Handler) parseID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {

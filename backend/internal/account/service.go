@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	ErrForbidden      = errors.New("forbidden")
-	ErrInvalidRole    = errors.New("invalid role")
-	ErrWeakPassword   = errors.New("password too short")
+	ErrForbidden       = errors.New("forbidden")
+	ErrInvalidRole     = errors.New("invalid role")
+	ErrWeakPassword    = errors.New("password too short")
+	ErrSelfDeactivation = errors.New("cannot deactivate own account")
 )
 
 // Service はアカウント管理のビジネスロジック
@@ -158,7 +159,11 @@ func (s *Service) Update(ctx context.Context, callerRole domain.Role, callerAsso
 }
 
 // Deactivate はアカウントを無効化する（論理削除）。
-func (s *Service) Deactivate(ctx context.Context, callerRole domain.Role, callerAssocID *uuid.UUID, id uuid.UUID) error {
+// callerUserID と id が一致する場合は自己無効化として ErrSelfDeactivation を返す。
+func (s *Service) Deactivate(ctx context.Context, callerRole domain.Role, callerAssocID *uuid.UUID, callerUserID, id uuid.UUID) error {
+	if callerUserID == id {
+		return ErrSelfDeactivation
+	}
 	if _, err := s.Get(ctx, callerRole, callerAssocID, id); err != nil {
 		return err
 	}
