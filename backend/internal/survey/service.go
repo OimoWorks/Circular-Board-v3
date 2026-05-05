@@ -150,7 +150,6 @@ func (s *Service) Answer(ctx context.Context, associationID, userID, surveyID uu
 		return ErrExpired
 	}
 
-	// テナントチェック
 	survey, err := s.repo.FindByID(ctx, surveyID, nil)
 	if err != nil {
 		return fmt.Errorf("find survey: %w", err)

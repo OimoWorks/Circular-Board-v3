@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../../../../core/api_client.dart';
@@ -66,6 +68,35 @@ class SurveyRepository {
     final res = await _client.get('/surveys/$id/results', queryParameters: params);
     final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
     return SurveyResult.fromJson(data);
+  }
+
+  Future<SurveyImage> uploadImage(
+    String surveyId,
+    Uint8List bytes,
+    String filename,
+    String mimeType, {
+    int sortOrder = 0,
+  }) async {
+    final formData = FormData.fromMap({
+      'image': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: DioMediaType.parse(mimeType),
+      ),
+      'sort_order': sortOrder.toString(),
+    });
+    final res = await _client.postFormData('/surveys/$surveyId/images', formData);
+    final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return SurveyImage.fromJson(data);
+  }
+
+  Future<void> deleteImage(String surveyId, String imageId) async {
+    await _client.delete('/surveys/$surveyId/images/$imageId');
+  }
+
+  Future<Uint8List> getImageBytes(String surveyId, String imageId) async {
+    final res = await _client.getBytes('/surveys/$surveyId/images/$imageId');
+    return Uint8List.fromList(res.data!);
   }
 
   Future<int> getUnansweredCount({String? associationId}) async {

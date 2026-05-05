@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	ErrNotFound   = errors.New("survey not found")
-	ErrExpired    = errors.New("survey has expired")
-	ErrForbidden  = errors.New("forbidden")
+	ErrNotFound      = errors.New("survey not found")
+	ErrExpired       = errors.New("survey has expired")
+	ErrForbidden     = errors.New("forbidden")
+	ErrImageNotFound = errors.New("image not found")
 )
 
 // Survey はアンケートのドメインモデル
@@ -26,6 +27,7 @@ type Survey struct {
 	DeletedAt     *time.Time
 
 	Questions  []Question
+	Images     []SurveyImage
 	IsAnswered bool // 呼び出し元ユーザーが回答済みか
 }
 
@@ -55,6 +57,17 @@ type Answer struct {
 	QuestionID uuid.UUID
 	ChoiceID   uuid.UUID
 	AnsweredAt time.Time
+}
+
+// SurveyImage はアンケートに添付された画像
+type SurveyImage struct {
+	ID            uuid.UUID
+	SurveyID      uuid.UUID
+	AssociationID uuid.UUID
+	Filename      string
+	StoragePath   string
+	SortOrder     int
+	CreatedAt     time.Time
 }
 
 // SurveyResult は集計結果

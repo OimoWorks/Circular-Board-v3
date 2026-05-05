@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../main.dart';
 import '../data/models/survey_model.dart';
+import '../data/repositories/survey_repository.dart';
 import '../providers/survey_provider.dart';
 
 class SurveyAnswerScreen extends ConsumerStatefulWidget {
@@ -186,6 +189,13 @@ class _SurveyAnswerScreenState extends ConsumerState<SurveyAnswerScreen> {
             ),
             const SizedBox(height: 16),
 
+            // ─── 画像カルーセル ──────────────────────────────────
+            if (survey.images.isNotEmpty)
+              _SurveyImagesSection(
+                surveyId: survey.id,
+                images: survey.images,
+              ),
+
             // ─── 質問リスト ──────────────────────────────────────
             ...survey.questions.asMap().entries.map((entry) {
               final idx = entry.key;
@@ -241,6 +251,247 @@ class _SurveyAnswerScreenState extends ConsumerState<SurveyAnswerScreen> {
     );
   }
 }
+
+// ─── 画像カルーセルセクション ────────────────────────────────────────────
+
+class _SurveyImagesSection extends StatefulWidget {
+  final String surveyId;
+  final List<SurveyImage> images;
+
+  const _SurveyImagesSection({
+    required this.surveyId,
+    required this.images,
+  });
+
+  @override
+  State<_SurveyImagesSection> createState() => _SurveyImagesSectionState();
+}
+
+class _SurveyImagesSectionState extends State<_SurveyImagesSection> {
+  final _pageController = PageController();
+  int _currentPage = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.images;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 220,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: images.length,
+              onPageChanged: (i) => setState(() => _currentPage = i),
+              itemBuilder: (context, i) => _ImageTile(
+                surveyId: widget.surveyId,
+                imageId: images[i].id,
+                allImages: images,
+                initialIndex: i,
+              ),
+            ),
+          ),
+          if (images.length > 1) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                images.length,
+                (i) => AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: _currentPage == i ? 16 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _currentPage == i
+                        ? AppColors.primary
+                        : Colors.grey[300],
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageTile extends ConsumerStatefulWidget {
+  final String surveyId;
+  final String imageId;
+  final List<SurveyImage> allImages;
+  final int initialIndex;
+
+  const _ImageTile({
+    required this.surveyId,
+    required this.imageId,
+    required this.allImages,
+    required this.initialIndex,
+  });
+
+  @override
+  ConsumerState<_ImageTile> createState() => _ImageTileState();
+}
+
+class _ImageTileState extends ConsumerState<_ImageTile> {
+  late Future<Uint8List> _bytesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bytesFuture = ref
+        .read(surveyRepositoryProvider)
+        .getImageBytes(widget.surveyId, widget.imageId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openFullScreen(context),
+      child: FutureBuilder<Uint8List>(
+        future: _bytesFuture,
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return Container(
+              color: Colors.grey[100],
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snap.hasError || snap.data == null) {
+            return Container(
+              color: Colors.grey[100],
+              child: const Center(
+                child: Icon(Icons.broken_image_rounded,
+                    color: Colors.grey, size: 48),
+              ),
+            );
+          }
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.memory(
+              snap.data!,
+              fit: BoxFit.cover,
+              width: double.infinity,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openFullScreen(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _FullScreenImagesDialog(
+        surveyId: widget.surveyId,
+        images: widget.allImages,
+        initialIndex: widget.initialIndex,
+      ),
+    );
+  }
+}
+
+class _FullScreenImagesDialog extends ConsumerStatefulWidget {
+  final String surveyId;
+  final List<SurveyImage> images;
+  final int initialIndex;
+
+  const _FullScreenImagesDialog({
+    required this.surveyId,
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  ConsumerState<_FullScreenImagesDialog> createState() =>
+      _FullScreenImagesDialogState();
+}
+
+class _FullScreenImagesDialogState
+    extends ConsumerState<_FullScreenImagesDialog> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+  final Map<String, Future<Uint8List>> _futures = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    final repo = ref.read(surveyRepositoryProvider);
+    for (final img in widget.images) {
+      _futures[img.id] =
+          repo.getImageBytes(widget.surveyId, img.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: widget.images.length > 1
+              ? Text('${_currentPage + 1} / ${widget.images.length}')
+              : null,
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: PageView.builder(
+          controller: _pageController,
+          itemCount: widget.images.length,
+          onPageChanged: (i) => setState(() => _currentPage = i),
+          itemBuilder: (context, i) {
+            final imgId = widget.images[i].id;
+            return FutureBuilder<Uint8List>(
+              future: _futures[imgId],
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                      child: CircularProgressIndicator(color: Colors.white));
+                }
+                if (snap.hasError || snap.data == null) {
+                  return const Center(
+                    child: Icon(Icons.broken_image_rounded,
+                        color: Colors.grey, size: 64),
+                  );
+                }
+                return InteractiveViewer(
+                  child: Center(
+                    child: Image.memory(snap.data!, fit: BoxFit.contain),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 質問カード ──────────────────────────────────────────────────────────
 
 class _QuestionCard extends StatelessWidget {
   final int index;

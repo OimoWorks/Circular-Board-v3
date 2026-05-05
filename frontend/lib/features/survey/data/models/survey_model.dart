@@ -1,3 +1,32 @@
+class SurveyImage {
+  final String id;
+  final String surveyId;
+  final String associationId;
+  final String filename;
+  final int sortOrder;
+  final DateTime createdAt;
+
+  const SurveyImage({
+    required this.id,
+    required this.surveyId,
+    required this.associationId,
+    required this.filename,
+    required this.sortOrder,
+    required this.createdAt,
+  });
+
+  factory SurveyImage.fromJson(Map<String, dynamic> json) {
+    return SurveyImage(
+      id: json['id'] as String,
+      surveyId: json['survey_id'] as String,
+      associationId: json['association_id'] as String,
+      filename: json['filename'] as String,
+      sortOrder: (json['sort_order'] as int?) ?? 0,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
 class SurveyModel {
   final String id;
   final String associationId;
@@ -9,6 +38,7 @@ class SurveyModel {
   final String createdBy;
   final DateTime createdAt;
   final List<SurveyQuestion> questions;
+  final List<SurveyImage> images;
 
   const SurveyModel({
     required this.id,
@@ -21,6 +51,7 @@ class SurveyModel {
     required this.createdBy,
     required this.createdAt,
     this.questions = const [],
+    this.images = const [],
   });
 
   factory SurveyModel.fromJson(Map<String, dynamic> json) {
@@ -36,6 +67,10 @@ class SurveyModel {
       createdAt: DateTime.parse(json['created_at'] as String),
       questions: (json['questions'] as List<dynamic>?)
               ?.map((q) => SurveyQuestion.fromJson(q as Map<String, dynamic>))
+              .toList() ??
+          [],
+      images: (json['images'] as List<dynamic>?)
+              ?.map((i) => SurveyImage.fromJson(i as Map<String, dynamic>))
               .toList() ??
           [],
     );

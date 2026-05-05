@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"circular-board/internal/config"
 	"circular-board/internal/domain"
 	"circular-board/internal/middleware"
 )
@@ -17,10 +18,11 @@ import (
 // Handler はアンケートの HTTP ハンドラ
 type Handler struct {
 	svc *Service
+	cfg *config.Config
 }
 
-func NewHandler(svc *Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc *Service, cfg *config.Config) *Handler {
+	return &Handler{svc: svc, cfg: cfg}
 }
 
 // POST /api/v1/surveys
@@ -30,7 +32,6 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// system_admin は association_id 必須
 	assocID, ok := h.resolveAssocID(w, r, callerRole, callerAssocID)
 	if !ok {
 		return
@@ -295,8 +296,6 @@ func (h *Handler) resolveAssocID(w http.ResponseWriter, r *http.Request, role do
 	if role == domain.RoleSystemAdmin {
 		raw := r.URL.Query().Get("association_id")
 		if raw == "" {
-			// system_admin でも POST body に association_id を含む場合があるが、
-			// ここでは一覧・詳細用にクエリパラメータのみを見る
 			respondError(w, http.StatusBadRequest, "INVALID_PARAM", "association_id を指定してください")
 			return uuid.Nil, false
 		}
@@ -341,6 +340,7 @@ func surveyListResponse(s *Survey) map[string]interface{} {
 
 func surveyResponse(s *Survey) map[string]interface{} {
 	resp := surveyListResponse(s)
+
 	questions := make([]map[string]interface{}, 0, len(s.Questions))
 	for _, q := range s.Questions {
 		choices := make([]map[string]interface{}, 0, len(q.Choices))
@@ -360,6 +360,13 @@ func surveyResponse(s *Survey) map[string]interface{} {
 		})
 	}
 	resp["questions"] = questions
+
+	images := make([]map[string]interface{}, 0, len(s.Images))
+	for _, img := range s.Images {
+		images = append(images, imageResponse(&img))
+	}
+	resp["images"] = images
+
 	return resp
 }
 

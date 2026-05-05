@@ -104,7 +104,7 @@ class SurveyNotifier extends ChangeNotifier {
     }
   }
 
-  Future<bool> create({
+  Future<SurveyModel?> create({
     required String title,
     required String description,
     required DateTime expiresAt,
@@ -124,14 +124,14 @@ class SurveyNotifier extends ChangeNotifier {
         associationId: associationId,
       );
       _surveys.insert(0, survey);
-      return true;
+      return survey;
     } on SurveyException catch (e) {
       _errorMessage = e.message;
-      return false;
+      return null;
     } catch (e) {
       _errorMessage = '予期しないエラーが発生しました';
       if (kDebugMode) print(e);
-      return false;
+      return null;
     } finally {
       _isSubmitting = false;
       notifyListeners();
@@ -179,6 +179,7 @@ class SurveyNotifier extends ChangeNotifier {
           createdBy: _surveys[idx].createdBy,
           createdAt: _surveys[idx].createdAt,
           questions: _surveys[idx].questions,
+          images: _surveys[idx].images,
         );
       }
       return true;

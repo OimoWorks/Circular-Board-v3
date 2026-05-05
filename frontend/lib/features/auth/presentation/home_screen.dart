@@ -1,18 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../main.dart';
-import '../../files/data/models/file_model.dart';
-import '../../files/providers/file_provider.dart';
-import '../../notice/data/models/notice_model.dart';
 import '../../notice/providers/notice_provider.dart';
-import '../../survey/data/models/survey_model.dart';
 import '../../survey/providers/survey_provider.dart';
 import 'auth_provider.dart';
 
-// 管理メニューを表示するロールかどうか
 bool _isAdmin(String role) =>
     role == 'association_admin' || role == 'system_admin';
 
@@ -50,7 +44,6 @@ class HomeScreen extends ConsumerWidget {
         foregroundColor: AppColors.onPrimary,
         elevation: 0,
         actions: [
-          // かんたんモード切替
           IconButton(
             icon: Icon(
               isEasy
@@ -90,11 +83,12 @@ class HomeScreen extends ConsumerWidget {
                     Row(
                       children: [
                         CircleAvatar(
-                          radius: 26,
+                          radius: isEasy ? 30 : 26,
                           backgroundColor:
                               AppColors.primary.withOpacity(0.12),
-                          child: const Icon(Icons.person_rounded,
-                              size: 30, color: AppColors.primary),
+                          child: Icon(Icons.person_rounded,
+                              size: isEasy ? 34 : 30,
+                              color: AppColors.primary),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -105,7 +99,7 @@ class HomeScreen extends ConsumerWidget {
                                 user.name,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: isEasy ? 18 : null,
+                                  fontSize: isEasy ? 20 : null,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -136,16 +130,11 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isEasy ? 16 : 12),
 
-            // ─── メニュー：お知らせ ──────────────────────────────
+            // ─── メニュー：お知らせ（未読バッジ付き） ────────────
             _NoticeMenuCard(isEasy: isEasy),
-            const SizedBox(height: 10),
-
-            // ─── メニュー：アンケート ────────────────────────────
-            if (user.role != 'system_admin')
-              _SurveyMenuCard(isEasy: isEasy),
-            if (user.role != 'system_admin') const SizedBox(height: 10),
+            SizedBox(height: isEasy ? 12 : 10),
 
             // ─── メニュー：回覧物 ────────────────────────────────
             _MenuCard(
@@ -155,9 +144,15 @@ class HomeScreen extends ConsumerWidget {
               onTap: () => context.push('/files'),
               isEasy: isEasy,
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: isEasy ? 12 : 10),
 
-            // ─── 管理メニュー（association_admin 以上） ──────────
+            // ─── メニュー：アンケート（未回答バッジ付き） ─────────
+            if (user.role != 'system_admin') ...[
+              _SurveyMenuCard(isEasy: isEasy),
+              SizedBox(height: isEasy ? 12 : 10),
+            ],
+
+            // ─── アカウント管理（association_admin 以上） ─────────
             if (_isAdmin(user.role)) ...[
               _MenuCard(
                 icon: Icons.manage_accounts_rounded,
@@ -167,7 +162,7 @@ class HomeScreen extends ConsumerWidget {
                 isEasy: isEasy,
                 color: const Color(0xFF2D6A4F),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: isEasy ? 12 : 10),
             ],
 
             // ─── 自治会管理（system_admin のみ） ─────────────────
@@ -180,23 +175,7 @@ class HomeScreen extends ConsumerWidget {
                 isEasy: isEasy,
                 color: const Color(0xFF1B4332),
               ),
-              const SizedBox(height: 10),
             ],
-
-            const SizedBox(height: 10),
-
-            // ─── 最新のお知らせ ──────────────────────────────────
-            _RecentNoticesSection(theme: theme, isEasy: isEasy),
-            const SizedBox(height: 20),
-
-            // ─── 最新のアンケート（system_admin 以外） ───────────
-            if (user.role != 'system_admin') ...[
-              _RecentSurveysSection(theme: theme, isEasy: isEasy),
-              const SizedBox(height: 20),
-            ],
-
-            // ─── 最新の回覧物 ────────────────────────────────────
-            _RecentFilesSection(theme: theme, isEasy: isEasy),
           ],
         ),
       ),
@@ -234,59 +213,61 @@ class _NoticeMenuCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadAsync = ref.watch(unreadCountProvider);
+    final iconSize = isEasy ? 56.0 : 46.0;
+    final iconInner = isEasy ? 30.0 : 24.0;
+    final titleSize = isEasy ? 18.0 : 15.0;
+    final subtitleSize = isEasy ? 14.0 : 12.0;
+    final padding = isEasy ? 22.0 : 18.0;
 
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => context.push('/notices'),
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: EdgeInsets.all(padding),
           child: Row(
             children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Stack(
-                  children: [
-                    const Center(
-                      child: Icon(Icons.notifications_rounded,
-                          color: AppColors.primary, size: 24),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: iconSize,
+                    height: iconSize,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(isEasy ? 14 : 11),
                     ),
-                    // 未読バッジ
-                    unreadAsync.when(
-                      data: (count) => count > 0
-                          ? Positioned(
-                              top: 4,
-                              right: 4,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                constraints: const BoxConstraints(
-                                    minWidth: 16, minHeight: 16),
-                                decoration: const BoxDecoration(
-                                  color: Colors.red,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Text(
-                                  count > 99 ? '99+' : '$count',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
+                    child: Icon(Icons.notifications_rounded,
+                        color: AppColors.primary, size: iconInner),
+                  ),
+                  // 未読バッジ
+                  unreadAsync.when(
+                    data: (count) => count > 0
+                        ? Positioned(
+                            top: -4,
+                            right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                count > 99 ? '99+' : '$count',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isEasy ? 12 : 10,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            )
-                          : const SizedBox.shrink(),
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ),
-                  ],
-                ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
+                ],
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -299,7 +280,7 @@ class _NoticeMenuCard extends ConsumerWidget {
                           'お知らせ',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: isEasy ? 16 : 15,
+                            fontSize: titleSize,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -314,9 +295,9 @@ class _NoticeMenuCard extends ConsumerWidget {
                                   ),
                                   child: Text(
                                     '未読 $count件',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: Colors.white,
-                                      fontSize: 11,
+                                      fontSize: isEasy ? 12 : 11,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -331,14 +312,14 @@ class _NoticeMenuCard extends ConsumerWidget {
                     Text(
                       '自治会からのお知らせを確認する',
                       style: TextStyle(
-                          fontSize: isEasy ? 13 : 12,
+                          fontSize: subtitleSize,
                           color: Colors.grey[600]),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.primary),
+              Icon(Icons.chevron_right_rounded,
+                  color: AppColors.primary, size: isEasy ? 28 : 24),
             ],
           ),
         ),
@@ -347,289 +328,199 @@ class _NoticeMenuCard extends ConsumerWidget {
   }
 }
 
-// ─── 最新のお知らせセクション ────────────────────────────────────
+// ─── アンケートメニューカード（未回答件数バッジ付き） ─────────────
 
-class _RecentNoticesSection extends ConsumerWidget {
-  final ThemeData theme;
+class _SurveyMenuCard extends ConsumerWidget {
   final bool isEasy;
-  const _RecentNoticesSection({required this.theme, required this.isEasy});
+  const _SurveyMenuCard({required this.isEasy});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final recentAsync = ref.watch(recentNoticesProvider);
+    final unansweredAsync = ref.watch(unansweredSurveyCountProvider);
+    final count = unansweredAsync.valueOrNull ?? 0;
+    final iconSize = isEasy ? 56.0 : 46.0;
+    final iconInner = isEasy ? 30.0 : 24.0;
+    final titleSize = isEasy ? 18.0 : 15.0;
+    final subtitleSize = isEasy ? 14.0 : 12.0;
+    final padding = isEasy ? 22.0 : 18.0;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '最新のお知らせ',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryDark,
-                fontSize: isEasy ? 16 : null,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => context.push('/notices'),
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-              label: const Text('すべて見る'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        recentAsync.when(
-          data: (notices) {
-            if (notices.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Center(
-                  child: Text(
-                    '最新のお知らせはありません',
-                    style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: isEasy ? 15 : 13),
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.push('/surveys'),
+        child: Padding(
+          padding: EdgeInsets.all(padding),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: iconSize,
+                    height: iconSize,
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(isEasy ? 14 : 11),
+                    ),
+                    child: Icon(Icons.poll_rounded,
+                        color: Colors.teal, size: iconInner),
                   ),
-                ),
-              );
-            }
-            return Card(
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: notices.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 52),
-                itemBuilder: (ctx, i) =>
-                    _RecentNoticeTile(notice: notices[i], isEasy: isEasy),
+                  if (count > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          count > 99 ? '99+' : '$count',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isEasy ? 12 : 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            );
-          },
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: CircularProgressIndicator(),
-            ),
-          ),
-          error: (_, __) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              '取得に失敗しました',
-              style: TextStyle(color: Colors.red[400], fontSize: 13),
-            ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'アンケート',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: titleSize,
+                          ),
+                        ),
+                        if (count > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '未回答 $count件',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isEasy ? 12 : 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      count > 0
+                          ? '未回答が $count 件あります'
+                          : 'アンケートへの回答・確認',
+                      style: TextStyle(
+                        fontSize: subtitleSize,
+                        color: count > 0
+                            ? Colors.orange[700]
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: Colors.teal, size: isEasy ? 28 : 24),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-// ─── 最新お知らせタイル ───────────────────────────────────────────
+// ─── メニューカード（汎用） ──────────────────────────────────────
 
-class _RecentNoticeTile extends StatelessWidget {
-  final NoticeModel notice;
+class _MenuCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
   final bool isEasy;
-  const _RecentNoticeTile({required this.notice, required this.isEasy});
+  final Color? color;
+
+  const _MenuCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    required this.isEasy,
+    this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel =
-        DateFormat('MM/dd').format(notice.createdAt.toLocal());
+    final c = color ?? AppColors.primary;
+    final iconSize = isEasy ? 56.0 : 46.0;
+    final iconInner = isEasy ? 30.0 : 24.0;
+    final titleSize = isEasy ? 18.0 : 15.0;
+    final subtitleSize = isEasy ? 14.0 : 12.0;
+    final padding = isEasy ? 22.0 : 18.0;
 
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: notice.isPinned
-              ? AppColors.accent.withOpacity(0.15)
-              : AppColors.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          notice.isPinned
-              ? Icons.push_pin_rounded
-              : Icons.notifications_rounded,
-          color: notice.isPinned ? AppColors.accent : AppColors.primary,
-          size: 18,
-        ),
-      ),
-      title: Text(
-        notice.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: isEasy ? 15 : 13,
-          fontWeight:
-              notice.isRead ? FontWeight.normal : FontWeight.bold,
-          color: notice.isRead ? Colors.grey[600] : Colors.black87,
-        ),
-      ),
-      subtitle: Text(
-        dateLabel,
-        style: TextStyle(
-            fontSize: isEasy ? 13 : 11, color: Colors.grey[500]),
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded,
-          color: AppColors.primary, size: 20),
-      onTap: () => context.push('/notices/${notice.id}'),
-    );
-  }
-}
-
-// ─── 最新の回覧物セクション ─────────────────────────────────────
-
-class _RecentFilesSection extends ConsumerWidget {
-  final ThemeData theme;
-  final bool isEasy;
-  const _RecentFilesSection({required this.theme, required this.isEasy});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final recentAsync = ref.watch(recentFilesProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '最新の回覧物',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryDark,
-                fontSize: isEasy ? 16 : null,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => context.push('/files'),
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-              label: const Text('すべて見る'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        recentAsync.when(
-          data: (files) {
-            if (files.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: Text(
-                    '最新の回覧物はありません',
-                    style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: isEasy ? 15 : 13),
-                  ),
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.all(padding),
+          child: Row(
+            children: [
+              Container(
+                width: iconSize,
+                height: iconSize,
+                decoration: BoxDecoration(
+                  color: c.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(isEasy ? 14 : 11),
                 ),
-              );
-            }
-            return Card(
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: files.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, indent: 52),
-                itemBuilder: (ctx, i) =>
-                    _RecentFileTile(file: files[i], isEasy: isEasy),
+                child: Icon(icon, color: c, size: iconInner),
               ),
-            );
-          },
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: CircularProgressIndicator(),
-            ),
-          ),
-          error: (_, __) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              '取得に失敗しました',
-              style: TextStyle(color: Colors.red[400], fontSize: 13),
-            ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: titleSize,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                          fontSize: subtitleSize,
+                          color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded,
+                  color: c, size: isEasy ? 28 : 24),
+            ],
           ),
         ),
-      ],
-    );
-  }
-}
-
-// ─── 最新回覧物タイル ───────────────────────────────────────────
-
-class _RecentFileTile extends StatelessWidget {
-  final FileModel file;
-  final bool isEasy;
-  const _RecentFileTile({required this.file, required this.isEasy});
-
-  static const _monthLabels = [
-    '1月', '2月', '3月', '4月', '5月', '6月',
-    '7月', '8月', '9月', '10月', '11月', '12月',
-  ];
-
-  IconData get _icon {
-    switch (file.mimeType) {
-      case 'application/pdf':
-        return Icons.picture_as_pdf_rounded;
-      case 'image/jpeg':
-      case 'image/png':
-        return Icons.image_rounded;
-      default:
-        return Icons.insert_drive_file_rounded;
-    }
-  }
-
-  Color get _iconColor {
-    switch (file.mimeType) {
-      case 'application/pdf':
-        return Colors.red[700]!;
-      case 'image/jpeg':
-      case 'image/png':
-        return Colors.blue[600]!;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: _iconColor.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(_icon, color: _iconColor, size: 20),
       ),
-      title: Text(
-        file.originalFilename,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: isEasy ? 15 : 13),
-      ),
-      subtitle: Text(
-        '${file.year}年${_monthLabels[file.month - 1]}　${file.fileSizeLabel}',
-        style: TextStyle(
-            fontSize: isEasy ? 13 : 11, color: Colors.grey[500]),
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded,
-          color: AppColors.primary, size: 20),
-      onTap: () => context.push('/files/preview', extra: file),
     );
   }
 }
@@ -655,7 +546,7 @@ class _InfoRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: AppColors.primary),
+        Icon(icon, size: isEasy ? 20 : 18, color: AppColors.primary),
         const SizedBox(width: 10),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,82 +561,12 @@ class _InfoRow extends StatelessWidget {
             Text(
               value,
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: isEasy ? 15 : null,
+                fontSize: isEasy ? 16 : null,
               ),
             ),
           ],
         ),
       ],
-    );
-  }
-}
-
-// ─── メニューカード ─────────────────────────────────────────────
-
-class _MenuCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final bool isEasy;
-  final Color? color;
-
-  const _MenuCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    required this.isEasy,
-    this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? AppColors.primary;
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: c.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, color: c, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: isEasy ? 16 : 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                          fontSize: isEasy ? 13 : 12,
-                          color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: c),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -791,225 +612,6 @@ class _RoleBadge extends StatelessWidget {
         label,
         style: TextStyle(
             fontSize: 12, fontWeight: FontWeight.w600, color: _fgColor()),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// アンケートメニューカード（未回答件数バッジ付き）
-// ─────────────────────────────────────────────────────────────
-class _SurveyMenuCard extends ConsumerWidget {
-  final bool isEasy;
-  const _SurveyMenuCard({required this.isEasy});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unansweredAsync = ref.watch(unansweredSurveyCountProvider);
-    final count = unansweredAsync.valueOrNull ?? 0;
-
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
-      child: InkWell(
-        onTap: () => context.push('/surveys'),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding:
-              EdgeInsets.symmetric(horizontal: 16, vertical: isEasy ? 18 : 14),
-          child: Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.teal.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.poll_rounded,
-                        color: Colors.teal, size: 24),
-                  ),
-                  if (count > 0)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          count > 99 ? '99+' : '$count',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'アンケート',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: isEasy ? 17 : 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      count > 0 ? '未回答が $count 件あります' : 'アンケートへの回答・確認',
-                      style: TextStyle(
-                        fontSize: isEasy ? 13 : 12,
-                        color: count > 0 ? Colors.orange[700] : Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.grey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// 最新のアンケートセクション
-// ─────────────────────────────────────────────────────────────
-class _RecentSurveysSection extends ConsumerWidget {
-  final ThemeData theme;
-  final bool isEasy;
-
-  const _RecentSurveysSection({required this.theme, required this.isEasy});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final surveysAsync = ref.watch(recentSurveysProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.poll_rounded, size: 18, color: Colors.teal),
-            const SizedBox(width: 6),
-            Text('最新のアンケート',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isEasy ? 15 : null,
-                )),
-            const Spacer(),
-            TextButton(
-              onPressed: () => context.push('/surveys'),
-              child: const Text('すべて見る',
-                  style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        surveysAsync.when(
-          data: (surveys) {
-            if (surveys.isEmpty) {
-              return Text('アンケートはありません',
-                  style: TextStyle(
-                      color: Colors.grey[500], fontSize: isEasy ? 14 : 12));
-            }
-            return Column(
-              children: surveys
-                  .map((s) => _SurveyListTile(survey: s, isEasy: isEasy))
-                  .toList(),
-            );
-          },
-          loading: () => const LinearProgressIndicator(),
-          error: (_, __) => Text('取得に失敗しました',
-              style: TextStyle(
-                  color: Colors.grey[500], fontSize: isEasy ? 14 : 12)),
-        ),
-      ],
-    );
-  }
-}
-
-class _SurveyListTile extends StatelessWidget {
-  final SurveyModel survey;
-  final bool isEasy;
-
-  const _SurveyListTile({required this.survey, required this.isEasy});
-
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = survey.isExpired
-        ? Colors.grey
-        : survey.isAnswered
-            ? AppColors.primary
-            : Colors.orange[700]!;
-    final statusIcon = survey.isExpired
-        ? Icons.schedule_rounded
-        : survey.isAnswered
-            ? Icons.check_circle_rounded
-            : Icons.circle_outlined;
-
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey[200]!),
-      ),
-      child: InkWell(
-        onTap: () => context.push('/surveys/${survey.id}'),
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            children: [
-              Icon(statusIcon, color: statusColor, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  survey.title,
-                  style: TextStyle(
-                    fontSize: isEasy ? 14 : 13,
-                    fontWeight: FontWeight.w500,
-                    color: survey.isExpired ? Colors.grey : Colors.black87,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  survey.statusLabel,
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

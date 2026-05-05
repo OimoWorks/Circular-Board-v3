@@ -1,8 +1,23 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../main.dart';
 import '../providers/survey_provider.dart';
+
+class _PendingImage {
+  final Uint8List bytes;
+  final String filename;
+  final String mimeType;
+
+  _PendingImage({
+    required this.bytes,
+    required this.filename,
+    required this.mimeType,
+  });
+}
 
 class SurveyCreateScreen extends ConsumerStatefulWidget {
   const SurveyCreateScreen({super.key});
@@ -16,8 +31,9 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   DateTime? _expiresAt;
-
   final List<_QuestionDraft> _questions = [];
+  final List<_PendingImage> _pendingImages = [];
+  bool _uploadingImages = false;
 
   @override
   void dispose() {
@@ -43,6 +59,31 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
     setState(() {
       _expiresAt = DateTime(
           date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
+  Future<void> _pickImages() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      for (final f in result.files) {
+        if (f.bytes == null) continue;
+        final ext = (f.extension ?? '').toLowerCase();
+        final mimeType = ext == 'png'
+            ? 'image/png'
+            : ext == 'gif'
+                ? 'image/gif'
+                : 'image/jpeg';
+        _pendingImages.add(_PendingImage(
+          bytes: f.bytes!,
+          filename: f.name,
+          mimeType: mimeType,
+        ));
+      }
     });
   }
 
@@ -85,7 +126,7 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
       };
     }).toList();
 
-    final ok = await ref.read(surveyNotifierProvider).create(
+    final survey = await ref.read(surveyNotifierProvider).create(
           title: _titleCtrl.text.trim(),
           description: _descCtrl.text.trim(),
           expiresAt: _expiresAt!,
@@ -93,7 +134,28 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
         );
 
     if (!mounted) return;
-    if (ok) {
+
+    if (survey != null) {
+      if (_pendingImages.isNotEmpty) {
+        setState(() => _uploadingImages = true);
+        final repo = ref.read(surveyRepositoryProvider);
+        for (int i = 0; i < _pendingImages.length; i++) {
+          final img = _pendingImages[i];
+          try {
+            await repo.uploadImage(
+              survey.id,
+              img.bytes,
+              img.filename,
+              img.mimeType,
+              sortOrder: i,
+            );
+          } catch (_) {
+            // 画像アップロード失敗は無視してアンケート作成は成功扱いにする
+          }
+        }
+        if (mounted) setState(() => _uploadingImages = false);
+      }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('アンケートを作成しました'),
         backgroundColor: AppColors.primary,
@@ -111,6 +173,7 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final notifier = ref.watch(surveyNotifierProvider);
+    final isBusy = notifier.isSubmitting || _uploadingImages;
 
     return Scaffold(
       appBar: AppBar(
@@ -185,6 +248,71 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
               ),
               const SizedBox(height: 20),
 
+              // 画像セクション
+              Row(
+                children: [
+                  const Text('画像（任意）',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _pickImages,
+                    icon: const Icon(Icons.add_photo_alternate_rounded, size: 18),
+                    label: const Text('追加'),
+                  ),
+                ],
+              ),
+              const Divider(),
+
+              if (_pendingImages.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text('画像を追加できます（jpg・png・gif、5MB以内）',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                )
+              else
+                SizedBox(
+                  height: 100,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _pendingImages.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) {
+                      return Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.memory(
+                              _pendingImages[i].bytes,
+                              width: 100,
+                              height: 100,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _pendingImages.removeAt(i)),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close_rounded,
+                                    size: 14, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 20),
+
               // 質問セクション
               Row(
                 children: [
@@ -222,15 +350,15 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
               SizedBox(
                 height: 50,
                 child: FilledButton.icon(
-                  onPressed: notifier.isSubmitting ? null : _submit,
-                  icon: notifier.isSubmitting
+                  onPressed: isBusy ? null : _submit,
+                  icon: isBusy
                       ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.send_rounded),
-                  label: const Text('作成する'),
+                  label: Text(_uploadingImages ? '画像アップロード中...' : '作成する'),
                   style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary),
                 ),

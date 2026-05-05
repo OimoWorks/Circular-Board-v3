@@ -106,10 +106,13 @@ func (r *Repository) List(ctx context.Context, associationID uuid.UUID, userID *
 		}
 		surveys = append(surveys, s)
 	}
+	if surveys == nil {
+		surveys = []*Survey{}
+	}
 	return surveys, rows.Err()
 }
 
-// FindByID はアンケートを質問・選択肢つきで取得する
+// FindByID はアンケートを質問・選択肢・画像つきで取得する
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID, userID *uuid.UUID) (*Survey, error) {
 	var s Survey
 	err := r.pool.QueryRow(ctx, `
@@ -140,6 +143,13 @@ func (r *Repository) FindByID(ctx context.Context, id uuid.UUID, userID *uuid.UU
 		return nil, err
 	}
 	s.Questions = questions
+
+	images, err := r.ListImages(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.Images = images
+
 	return &s, nil
 }
 
@@ -208,7 +218,6 @@ func (r *Repository) SaveAnswers(ctx context.Context, surveyID, userID uuid.UUID
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 既存の回答を削除
 	_, err = tx.Exec(ctx,
 		`DELETE FROM survey_answers WHERE survey_id = $1 AND user_id = $2`,
 		surveyID, userID,
@@ -217,7 +226,6 @@ func (r *Repository) SaveAnswers(ctx context.Context, surveyID, userID uuid.UUID
 		return err
 	}
 
-	// 新しい回答を挿入
 	for _, a := range answers {
 		_, err = tx.Exec(ctx, `
 			INSERT INTO survey_answers (id, survey_id, user_id, question_id, choice_id, answered_at)
@@ -245,14 +253,12 @@ func (r *Repository) GetResults(ctx context.Context, surveyID uuid.UUID) (*Surve
 		return nil, err
 	}
 
-	// ユニーク回答者数
 	if err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(DISTINCT user_id) FROM survey_answers WHERE survey_id = $1`, surveyID,
 	).Scan(&result.TotalAnswered); err != nil {
 		return nil, err
 	}
 
-	// 質問ごとの集計
 	qRows, err := r.pool.Query(ctx, `
 		SELECT id, question_text, question_type, sort_order
 		FROM survey_questions WHERE survey_id = $1 ORDER BY sort_order ASC`, surveyID)
@@ -267,7 +273,6 @@ func (r *Repository) GetResults(ctx context.Context, surveyID uuid.UUID) (*Surve
 			return nil, err
 		}
 
-		// 選択肢ごとの回答数
 		cRows, err := r.pool.Query(ctx, `
 			SELECT sc.id, sc.choice_text,
 			       COUNT(sa.id) AS cnt
@@ -292,7 +297,6 @@ func (r *Repository) GetResults(ctx context.Context, surveyID uuid.UUID) (*Surve
 		}
 		cRows.Close()
 
-		// 割合計算
 		for i := range qr.Choices {
 			if qr.TotalAnswers > 0 {
 				qr.Choices[i].Percentage = float64(qr.Choices[i].Count) / float64(qr.TotalAnswers) * 100
@@ -342,7 +346,6 @@ func (r *Repository) ValidateChoices(ctx context.Context, surveyID uuid.UUID, an
 			return errors.New("at least one choice is required")
 		}
 
-		// 選択肢が当該質問に属するか確認
 		for _, cID := range a.ChoiceIDs {
 			var exists bool
 			if err := r.pool.QueryRow(ctx,
@@ -372,4 +375,76 @@ func (r *Repository) CheckSurveyExpiry(ctx context.Context, id uuid.UUID) (bool,
 		return false, err
 	}
 	return expiresAt.After(time.Now()), nil
+}
+
+// ─── 画像 CRUD ───────────────────────────────────────────────
+
+// CreateImage はアンケート画像レコードを保存する
+func (r *Repository) CreateImage(ctx context.Context, img *SurveyImage) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO survey_images (id, survey_id, association_id, filename, storage_path, sort_order, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		img.ID, img.SurveyID, img.AssociationID, img.Filename, img.StoragePath, img.SortOrder, img.CreatedAt,
+	)
+	return err
+}
+
+// ListImages はアンケートの画像一覧を sort_order 昇順で返す
+func (r *Repository) ListImages(ctx context.Context, surveyID uuid.UUID) ([]SurveyImage, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, survey_id, association_id, filename, storage_path, sort_order, created_at
+		FROM survey_images
+		WHERE survey_id = $1
+		ORDER BY sort_order ASC, created_at ASC`, surveyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var images []SurveyImage
+	for rows.Next() {
+		var img SurveyImage
+		if err := rows.Scan(
+			&img.ID, &img.SurveyID, &img.AssociationID,
+			&img.Filename, &img.StoragePath, &img.SortOrder, &img.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		images = append(images, img)
+	}
+	if images == nil {
+		images = []SurveyImage{}
+	}
+	return images, rows.Err()
+}
+
+// FindImage は画像を ID で取得する
+func (r *Repository) FindImage(ctx context.Context, imageID uuid.UUID) (*SurveyImage, error) {
+	var img SurveyImage
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, survey_id, association_id, filename, storage_path, sort_order, created_at
+		FROM survey_images WHERE id = $1`, imageID,
+	).Scan(
+		&img.ID, &img.SurveyID, &img.AssociationID,
+		&img.Filename, &img.StoragePath, &img.SortOrder, &img.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrImageNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &img, nil
+}
+
+// DeleteImage は画像レコードを物理削除する
+func (r *Repository) DeleteImage(ctx context.Context, imageID uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM survey_images WHERE id = $1`, imageID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrImageNotFound
+	}
+	return nil
 }

@@ -70,7 +70,7 @@ func main() {
 
 	surveyRepo := survey.NewRepository(pool)
 	surveySvc := survey.NewService(surveyRepo)
-	surveyHandler := survey.NewHandler(surveySvc)
+	surveyHandler := survey.NewHandler(surveySvc, cfg)
 
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
@@ -161,7 +161,13 @@ func main() {
 				r.Post("/", surveyHandler.Create)
 				r.Delete("/{id}", surveyHandler.Delete)
 				r.Get("/{id}/results", surveyHandler.Results)
+				// 画像管理
+				r.Post("/{id}/images", surveyHandler.UploadImage)
+				r.Delete("/{id}/images/{image_id}", surveyHandler.DeleteImage)
 			})
+
+			// 画像取得（全ロール）
+			r.Get("/{id}/images/{image_id}", surveyHandler.GetImage)
 		})
 	})
 
