@@ -8,6 +8,8 @@ import '../../files/data/models/file_model.dart';
 import '../../files/providers/file_provider.dart';
 import '../../notice/data/models/notice_model.dart';
 import '../../notice/providers/notice_provider.dart';
+import '../../survey/data/models/survey_model.dart';
+import '../../survey/providers/survey_provider.dart';
 import 'auth_provider.dart';
 
 // 管理メニューを表示するロールかどうか
@@ -140,6 +142,11 @@ class HomeScreen extends ConsumerWidget {
             _NoticeMenuCard(isEasy: isEasy),
             const SizedBox(height: 10),
 
+            // ─── メニュー：アンケート ────────────────────────────
+            if (user.role != 'system_admin')
+              _SurveyMenuCard(isEasy: isEasy),
+            if (user.role != 'system_admin') const SizedBox(height: 10),
+
             // ─── メニュー：回覧物 ────────────────────────────────
             _MenuCard(
               icon: Icons.folder_rounded,
@@ -181,6 +188,12 @@ class HomeScreen extends ConsumerWidget {
             // ─── 最新のお知らせ ──────────────────────────────────
             _RecentNoticesSection(theme: theme, isEasy: isEasy),
             const SizedBox(height: 20),
+
+            // ─── 最新のアンケート（system_admin 以外） ───────────
+            if (user.role != 'system_admin') ...[
+              _RecentSurveysSection(theme: theme, isEasy: isEasy),
+              const SizedBox(height: 20),
+            ],
 
             // ─── 最新の回覧物 ────────────────────────────────────
             _RecentFilesSection(theme: theme, isEasy: isEasy),
@@ -778,6 +791,225 @@ class _RoleBadge extends StatelessWidget {
         label,
         style: TextStyle(
             fontSize: 12, fontWeight: FontWeight.w600, color: _fgColor()),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// アンケートメニューカード（未回答件数バッジ付き）
+// ─────────────────────────────────────────────────────────────
+class _SurveyMenuCard extends ConsumerWidget {
+  final bool isEasy;
+  const _SurveyMenuCard({required this.isEasy});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unansweredAsync = ref.watch(unansweredSurveyCountProvider);
+    final count = unansweredAsync.valueOrNull ?? 0;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      child: InkWell(
+        onTap: () => context.push('/surveys'),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding:
+              EdgeInsets.symmetric(horizontal: 16, vertical: isEasy ? 18 : 14),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.poll_rounded,
+                        color: Colors.teal, size: 24),
+                  ),
+                  if (count > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          count > 99 ? '99+' : '$count',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'アンケート',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: isEasy ? 17 : 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      count > 0 ? '未回答が $count 件あります' : 'アンケートへの回答・確認',
+                      style: TextStyle(
+                        fontSize: isEasy ? 13 : 12,
+                        color: count > 0 ? Colors.orange[700] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 最新のアンケートセクション
+// ─────────────────────────────────────────────────────────────
+class _RecentSurveysSection extends ConsumerWidget {
+  final ThemeData theme;
+  final bool isEasy;
+
+  const _RecentSurveysSection({required this.theme, required this.isEasy});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final surveysAsync = ref.watch(recentSurveysProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.poll_rounded, size: 18, color: Colors.teal),
+            const SizedBox(width: 6),
+            Text('最新のアンケート',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: isEasy ? 15 : null,
+                )),
+            const Spacer(),
+            TextButton(
+              onPressed: () => context.push('/surveys'),
+              child: const Text('すべて見る',
+                  style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        surveysAsync.when(
+          data: (surveys) {
+            if (surveys.isEmpty) {
+              return Text('アンケートはありません',
+                  style: TextStyle(
+                      color: Colors.grey[500], fontSize: isEasy ? 14 : 12));
+            }
+            return Column(
+              children: surveys
+                  .map((s) => _SurveyListTile(survey: s, isEasy: isEasy))
+                  .toList(),
+            );
+          },
+          loading: () => const LinearProgressIndicator(),
+          error: (_, __) => Text('取得に失敗しました',
+              style: TextStyle(
+                  color: Colors.grey[500], fontSize: isEasy ? 14 : 12)),
+        ),
+      ],
+    );
+  }
+}
+
+class _SurveyListTile extends StatelessWidget {
+  final SurveyModel survey;
+  final bool isEasy;
+
+  const _SurveyListTile({required this.survey, required this.isEasy});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = survey.isExpired
+        ? Colors.grey
+        : survey.isAnswered
+            ? AppColors.primary
+            : Colors.orange[700]!;
+    final statusIcon = survey.isExpired
+        ? Icons.schedule_rounded
+        : survey.isAnswered
+            ? Icons.check_circle_rounded
+            : Icons.circle_outlined;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Colors.grey[200]!),
+      ),
+      child: InkWell(
+        onTap: () => context.push('/surveys/${survey.id}'),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  survey.title,
+                  style: TextStyle(
+                    fontSize: isEasy ? 14 : 13,
+                    fontWeight: FontWeight.w500,
+                    color: survey.isExpired ? Colors.grey : Colors.black87,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  survey.statusLabel,
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

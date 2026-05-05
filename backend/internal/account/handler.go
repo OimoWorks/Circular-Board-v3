@@ -270,15 +270,20 @@ func accountResponse(a *Account) map[string]interface{} {
 	if a.AssociationID != nil {
 		assocID = a.AssociationID.String()
 	}
+	assocName := interface{}(nil)
+	if a.AssociationName != nil {
+		assocName = *a.AssociationName
+	}
 	return map[string]interface{}{
-		"id":             a.ID.String(),
-		"association_id": assocID,
-		"name":           a.Name,
-		"email":          a.Email,
-		"role":           string(a.Role),
-		"is_active":      a.IsActive,
-		"created_at":     a.CreatedAt,
-		"updated_at":     a.UpdatedAt,
+		"id":               a.ID.String(),
+		"association_id":   assocID,
+		"association_name": assocName,
+		"name":             a.Name,
+		"email":            a.Email,
+		"role":             string(a.Role),
+		"is_active":        a.IsActive,
+		"created_at":       a.CreatedAt,
+		"updated_at":       a.UpdatedAt,
 	}
 }
 

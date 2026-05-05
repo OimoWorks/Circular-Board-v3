@@ -104,6 +104,40 @@ class _AccountFormScreenState extends ConsumerState<AccountFormScreen> {
               // ─── 自治会選択（system_admin のみ表示） ─────────────
               if (_isSystemAdmin && !_isEdit) _buildAssociationPicker(theme),
 
+              // ─── 所属自治会表示（system_admin で編集時） ──────────
+              if (_isSystemAdmin && _isEdit && widget.account?.associationName != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.home_work_rounded,
+                          size: 18, color: Colors.grey[600]),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('所属自治会',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[500])),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.account!.associationName!,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 16),
 
               // ─── 名前 ────────────────────────────────────────────

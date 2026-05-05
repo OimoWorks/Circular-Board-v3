@@ -10,15 +10,16 @@ import (
 
 // Account はアカウント管理のドメインモデル（users テーブルに対応）
 type Account struct {
-	ID            uuid.UUID
-	AssociationID *uuid.UUID
-	Name          string
-	Email         string
-	PasswordHash  string
-	Role          domain.Role
-	IsActive      bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID              uuid.UUID
+	AssociationID   *uuid.UUID
+	AssociationName *string // JOIN で取得（表示用）
+	Name            string
+	Email           string
+	PasswordHash    string
+	Role            domain.Role
+	IsActive        bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // CreateInput はアカウント作成時の入力値

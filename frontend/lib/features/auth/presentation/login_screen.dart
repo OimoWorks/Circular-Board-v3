@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../main.dart';
 import 'auth_provider.dart';
@@ -416,7 +417,25 @@ class _LoginCard extends StatelessWidget {
                         ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+
+              // ── パスワードリセットリンク ──
+              Center(
+                child: TextButton(
+                  onPressed: () => context.push('/forgot-password'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                  ),
+                  child: const Text(
+                    'パスワードをお忘れの方',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
 
               // ── フッター ──
               Center(

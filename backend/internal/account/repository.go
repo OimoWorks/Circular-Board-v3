@@ -36,15 +36,19 @@ func (r *Repository) List(ctx context.Context, associationID *uuid.UUID) ([]*Acc
 	)
 	if associationID != nil {
 		rows, err = r.pool.Query(ctx, `
-			SELECT id, association_id, name, email, password_hash, role, is_active, created_at, updated_at
-			FROM users
-			WHERE association_id = $1
-			ORDER BY name ASC`, associationID)
+			SELECT u.id, u.association_id, u.name, u.email, u.password_hash, u.role,
+			       u.is_active, u.created_at, u.updated_at, a.name AS association_name
+			FROM users u
+			LEFT JOIN associations a ON u.association_id = a.id
+			WHERE u.association_id = $1
+			ORDER BY u.name ASC`, associationID)
 	} else {
 		rows, err = r.pool.Query(ctx, `
-			SELECT id, association_id, name, email, password_hash, role, is_active, created_at, updated_at
-			FROM users
-			ORDER BY name ASC`)
+			SELECT u.id, u.association_id, u.name, u.email, u.password_hash, u.role,
+			       u.is_active, u.created_at, u.updated_at, a.name AS association_name
+			FROM users u
+			LEFT JOIN associations a ON u.association_id = a.id
+			ORDER BY u.name ASC`)
 	}
 	if err != nil {
 		return nil, err
@@ -53,7 +57,7 @@ func (r *Repository) List(ctx context.Context, associationID *uuid.UUID) ([]*Acc
 
 	var accounts []*Account
 	for rows.Next() {
-		a, err := r.scan(rows)
+		a, err := r.scanWithAssoc(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -64,9 +68,12 @@ func (r *Repository) List(ctx context.Context, associationID *uuid.UUID) ([]*Acc
 
 // FindByID は ID でアカウントを取得する
 func (r *Repository) FindByID(ctx context.Context, id uuid.UUID) (*Account, error) {
-	return r.scan(r.pool.QueryRow(ctx, `
-		SELECT id, association_id, name, email, password_hash, role, is_active, created_at, updated_at
-		FROM users WHERE id = $1`, id))
+	return r.scanWithAssoc(r.pool.QueryRow(ctx, `
+		SELECT u.id, u.association_id, u.name, u.email, u.password_hash, u.role,
+		       u.is_active, u.created_at, u.updated_at, a.name AS association_name
+		FROM users u
+		LEFT JOIN associations a ON u.association_id = a.id
+		WHERE u.id = $1`, id))
 }
 
 // Create はアカウントを挿入する
@@ -122,13 +129,13 @@ func (r *Repository) SetActive(ctx context.Context, id uuid.UUID, active bool) e
 	return nil
 }
 
-// scan は共通行スキャン処理
-func (r *Repository) scan(row interface{ Scan(dest ...any) error }) (*Account, error) {
+// scanWithAssoc は association_name を含む共通行スキャン処理
+func (r *Repository) scanWithAssoc(row interface{ Scan(dest ...any) error }) (*Account, error) {
 	var a Account
 	var roleStr string
 	err := row.Scan(
 		&a.ID, &a.AssociationID, &a.Name, &a.Email, &a.PasswordHash,
-		&roleStr, &a.IsActive, &a.CreatedAt, &a.UpdatedAt,
+		&roleStr, &a.IsActive, &a.CreatedAt, &a.UpdatedAt, &a.AssociationName,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

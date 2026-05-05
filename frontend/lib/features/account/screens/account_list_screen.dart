@@ -419,6 +419,30 @@ class _AccountCard extends StatelessWidget {
                             : Colors.grey[400]),
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (account.associationName != null) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.home_work_rounded,
+                            size: 11,
+                            color: account.isActive
+                                ? Colors.grey[500]
+                                : Colors.grey[400]),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            account.associationName!,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: account.isActive
+                                    ? Colors.grey[500]
+                                    : Colors.grey[400]),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

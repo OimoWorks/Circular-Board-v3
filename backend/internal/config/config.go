@@ -7,14 +7,19 @@ import (
 )
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	AccessTokenExpiry   time.Duration
-	RefreshTokenExpiry  time.Duration
-	Env                 string
-	UploadDir           string
-	MaxUploadBytes      int64
+	Port               string
+	DatabaseURL        string
+	JWTSecret          string
+	AccessTokenExpiry  time.Duration
+	RefreshTokenExpiry time.Duration
+	Env                string
+	UploadDir          string
+	MaxUploadBytes     int64
+	// SendGrid
+	SendGridAPIKey   string
+	SendGridFromEmail string
+	// アプリのベース URL（パスワードリセットリンク生成用）
+	AppBaseURL string
 }
 
 func Load() *Config {
@@ -27,6 +32,9 @@ func Load() *Config {
 		Env:                getEnv("APP_ENV", "development"),
 		UploadDir:          getEnv("UPLOAD_DIR", "/app/uploads"),
 		MaxUploadBytes:     getInt64Env("MAX_UPLOAD_BYTES", 10<<20),
+		SendGridAPIKey:    getEnv("SENDGRID_API_KEY", ""),
+		SendGridFromEmail: getEnv("SENDGRID_FROM_EMAIL", "noreply@example.com"),
+		AppBaseURL:        getEnv("APP_BASE_URL", "http://localhost"),
 	}
 }
 

@@ -79,6 +79,36 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*UserWithA
 	return result, nil
 }
 
+// FindActiveByEmail はメールアドレスでアクティブなユーザーを検索する（パスワードリセット用）
+func (r *UserRepository) FindActiveByEmail(ctx context.Context, email string) (*UserWithAssociation, error) {
+	query := `
+		SELECT
+			u.id, u.association_id, u.name, u.email, u.password_hash, u.role, u.is_active,
+			u.created_at, u.updated_at,
+			a.name AS association_name, a.code AS association_code
+		FROM users u
+		LEFT JOIN associations a ON u.association_id = a.id
+		WHERE u.email = $1
+		  AND u.is_active = true
+		LIMIT 1`
+
+	row := r.pool.QueryRow(ctx, query, email)
+	return scanUserWithAssociation(row)
+}
+
+// UpdatePassword はパスワードハッシュを更新する（パスワードリセット用）
+func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1`, id, passwordHash)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func scanUserWithAssociation(row pgx.Row) (*UserWithAssociation, error) {
 	var u UserWithAssociation
 	var roleStr string

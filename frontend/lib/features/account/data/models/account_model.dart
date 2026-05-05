@@ -1,6 +1,7 @@
 class AccountModel {
   final String id;
   final String associationId;
+  final String? associationName;
   final String name;
   final String email;
   final String role;
@@ -11,6 +12,7 @@ class AccountModel {
   const AccountModel({
     required this.id,
     required this.associationId,
+    this.associationName,
     required this.name,
     required this.email,
     required this.role,
@@ -23,6 +25,7 @@ class AccountModel {
     return AccountModel(
       id: json['id'] as String,
       associationId: (json['association_id'] as String?) ?? '',
+      associationName: json['association_name'] as String?,
       name: json['name'] as String,
       email: json['email'] as String,
       role: json['role'] as String,
@@ -47,6 +50,7 @@ class AccountModel {
     return AccountModel(
       id: id,
       associationId: associationId,
+      associationName: associationName,
       name: name,
       email: email,
       role: role,

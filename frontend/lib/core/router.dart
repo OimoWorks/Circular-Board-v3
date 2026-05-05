@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/presentation/auth_provider.dart';
+import '../features/auth/presentation/forgot_password_screen.dart';
 import '../features/auth/presentation/home_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/auth/presentation/reset_password_screen.dart';
 import '../features/files/data/models/file_model.dart';
 import '../features/files/screens/file_list_screen.dart';
 import '../features/files/screens/file_preview_screen.dart';
@@ -17,6 +19,10 @@ import '../features/account/screens/account_form_screen.dart';
 import '../features/association/data/models/association_model.dart';
 import '../features/association/screens/association_list_screen.dart';
 import '../features/association/screens/association_form_screen.dart';
+import '../features/survey/screens/survey_answer_screen.dart';
+import '../features/survey/screens/survey_create_screen.dart';
+import '../features/survey/screens/survey_list_screen.dart';
+import '../features/survey/screens/survey_result_screen.dart';
 
 // GoRouterはAuthNotifierをlistenable登録して認証状態変化で再評価する
 final routerProvider = Provider<GoRouter>((ref) {
@@ -29,10 +35,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!authNotifier.initialized) return null;
 
       final isAuthenticated = authNotifier.isAuthenticated;
-      final isOnLogin = state.matchedLocation == '/login';
+      final loc = state.matchedLocation;
 
-      if (!isAuthenticated && !isOnLogin) return '/login';
-      if (isAuthenticated && isOnLogin) return '/';
+      // 未認証でもアクセス可能なページ
+      final publicPaths = ['/login', '/forgot-password', '/reset-password'];
+      final isPublic = publicPaths.any((p) => loc.startsWith(p));
+
+      if (!isAuthenticated && !isPublic) return '/login';
+      if (isAuthenticated && loc == '/login') return '/';
       return null;
     },
     routes: [
@@ -44,6 +54,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/login',
         builder: (context, state) => const LoginScreen(),
       ),
+      // ─── パスワードリセット ───────────────────────────────────
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (context, state) {
+          final token = state.uri.queryParameters['token'] ?? '';
+          return ResetPasswordScreen(token: token);
+        },
+      ),
+      // ─── 回覧物 ───────────────────────────────────────────────
       GoRoute(
         path: '/files',
         builder: (context, state) => const FileListScreen(),
@@ -55,6 +78,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return FilePreviewScreen(file: file);
         },
       ),
+      // ─── お知らせ ─────────────────────────────────────────────
       GoRoute(
         path: '/notices',
         builder: (context, state) => const NoticeListScreen(),
@@ -103,6 +127,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final assoc = state.extra as AssociationDetail;
           return AssociationFormScreen(association: assoc);
+        },
+      ),
+      // ─── アンケート ───────────────────────────────────────────
+      GoRoute(
+        path: '/surveys',
+        builder: (context, state) => const SurveyListScreen(),
+      ),
+      GoRoute(
+        path: '/surveys/create',
+        builder: (context, state) => const SurveyCreateScreen(),
+      ),
+      GoRoute(
+        path: '/surveys/:id',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return SurveyAnswerScreen(surveyId: id);
+        },
+      ),
+      GoRoute(
+        path: '/surveys/:id/results',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return SurveyResultScreen(surveyId: id);
         },
       ),
     ],

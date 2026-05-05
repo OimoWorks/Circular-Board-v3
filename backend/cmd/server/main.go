@@ -25,6 +25,7 @@ import (
 	"circular-board/internal/notice"
 	"circular-board/internal/repository"
 	"circular-board/internal/service"
+	"circular-board/internal/survey"
 )
 
 func main() {
@@ -46,8 +47,9 @@ func main() {
 
 	userRepo := repository.NewUserRepository(pool)
 	tokenRepo := repository.NewRefreshTokenRepository(pool)
+	resetRepo := repository.NewPasswordResetRepository(pool)
 	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
-	authHandler := handler.NewAuthHandler(authSvc)
+	authHandler := handler.NewAuthHandler(authSvc, resetRepo, userRepo, cfg)
 	authMiddleware := middleware.NewAuthMiddleware(authSvc)
 
 	fileRepo := files.NewRepository(pool)
@@ -66,6 +68,10 @@ func main() {
 	assocSvc := association.NewService(assocRepo)
 	assocHandler := association.NewHandler(assocSvc)
 
+	surveyRepo := survey.NewRepository(pool)
+	surveySvc := survey.NewService(surveyRepo)
+	surveyHandler := survey.NewHandler(surveySvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -76,6 +82,8 @@ func main() {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
+			r.Post("/forgot-password", authHandler.ForgotPassword)
+			r.Post("/reset-password", authHandler.ResetPassword)
 
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware.Authenticate)
@@ -124,7 +132,7 @@ func main() {
 		r.Route("/notices", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
 			r.Get("/", noticeHandler.List)
-			r.Get("/unread-count", noticeHandler.UnreadCount) // /{id}より先に登録
+			r.Get("/unread-count", noticeHandler.UnreadCount)
 			r.Get("/{id}", noticeHandler.Get)
 			r.Post("/{id}/read", noticeHandler.MarkAsRead)
 
@@ -132,6 +140,27 @@ func main() {
 				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
 				r.Post("/", noticeHandler.Create)
 				r.Delete("/{id}", noticeHandler.Delete)
+			})
+		})
+
+		// アンケート機能（全ロール閲覧・回答、管理者以上で作成・削除・集計）
+		r.Route("/surveys", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+
+			// 未回答件数（静的ルートを /{id} より前に登録）
+			r.Get("/unanswered-count", surveyHandler.UnansweredCount)
+
+			// 全ロールでアクセス可能
+			r.Get("/", surveyHandler.List)
+			r.Get("/{id}", surveyHandler.Get)
+			r.Post("/{id}/answer", surveyHandler.Answer)
+
+			// 管理者のみ
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
+				r.Post("/", surveyHandler.Create)
+				r.Delete("/{id}", surveyHandler.Delete)
+				r.Get("/{id}/results", surveyHandler.Results)
 			})
 		})
 	})
