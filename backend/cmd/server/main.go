@@ -21,6 +21,7 @@ import (
 	"circular-board/internal/domain"
 	"circular-board/internal/files"
 	"circular-board/internal/handler"
+	"circular-board/internal/home"
 	"circular-board/internal/middleware"
 	"circular-board/internal/notice"
 	"circular-board/internal/repository"
@@ -72,6 +73,10 @@ func main() {
 	surveySvc := survey.NewService(surveyRepo)
 	surveyHandler := survey.NewHandler(surveySvc, cfg)
 
+	homeRepo := home.NewRepository(pool)
+	homeSvc := home.NewService(homeRepo)
+	homeHandler := home.NewHandler(homeSvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -79,6 +84,9 @@ func main() {
 	r.Use(middleware.CORS)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// TOP画面集約API
+		r.With(authMiddleware.Authenticate).Get("/home", homeHandler.GetHomeData)
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
