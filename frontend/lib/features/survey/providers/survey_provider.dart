@@ -29,13 +29,18 @@ final unansweredSurveyCountProvider = FutureProvider.autoDispose<int>((ref) asyn
   }
 });
 
+// ホーム画面用: 未回答かつ期限内を期限昇順（近いもの優先）で最大3件
 final recentSurveysProvider = FutureProvider.autoDispose<List<SurveyModel>>((ref) async {
   final user = ref.watch(currentUserProvider);
   if (user == null || user.role == 'system_admin') return [];
   final repo = ref.watch(surveyRepositoryProvider);
   try {
     final surveys = await repo.list();
-    return surveys.take(3).toList();
+    final unanswered = surveys
+        .where((s) => !s.isAnswered && !s.isExpired)
+        .toList()
+      ..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
+    return unanswered.take(3).toList();
   } catch (_) {
     return [];
   }
