@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../main.dart';
-import '../../../account/data/models/account_model.dart';
-import '../../../account/data/repositories/account_repository.dart';
-import '../../../association/data/models/association_model.dart' show AssociationDetail;
-import '../../../association/data/repositories/association_repository.dart';
-import '../../../auth/presentation/auth_provider.dart';
+import '../../account/data/models/account_model.dart';
+import '../../account/data/repositories/account_repository.dart';
+import '../../association/data/models/association_model.dart' show AssociationDetail;
+import '../../association/data/repositories/association_repository.dart';
+import '../../auth/presentation/auth_provider.dart';
 import '../providers/permission_provider.dart';
 
 class EmergencyAppointmentScreen extends ConsumerStatefulWidget {
