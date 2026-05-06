@@ -267,6 +267,20 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
 
+                // 権限管理（system_admin のみ）
+                if (user.role == 'system_admin')
+                  _DrawerNavItem(
+                    icon: Icons.admin_panel_settings_rounded,
+                    title: '権限管理',
+                    badge: 0,
+                    isEasy: isEasy,
+                    titleSize: titleSize,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/permissions');
+                    },
+                  ),
+
                 const Divider(height: 1),
 
                 // ログアウト

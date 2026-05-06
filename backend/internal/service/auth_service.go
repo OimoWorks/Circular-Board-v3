@@ -252,3 +252,22 @@ func RequireRole(claims *Claims, allowedRoles ...domain.Role) bool {
 	}
 	return false
 }
+
+// ─── コンテキストキー（middleware と permission が共用） ────────────────
+
+type claimsContextKey struct{}
+
+// SetClaimsInContext はJWTクレームをコンテキストに保存する
+func SetClaimsInContext(ctx context.Context, claims *Claims) context.Context {
+	return context.WithValue(ctx, claimsContextKey{}, claims)
+}
+
+// ClaimsFromContext はコンテキストからJWTクレームを取り出す
+func ClaimsFromContext(ctx context.Context) *Claims {
+	v := ctx.Value(claimsContextKey{})
+	if v == nil {
+		return nil
+	}
+	c, _ := v.(*Claims)
+	return c
+}

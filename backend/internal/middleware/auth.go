@@ -9,10 +9,6 @@ import (
 	"circular-board/internal/service"
 )
 
-type contextKey string
-
-const claimsKey contextKey = "claims"
-
 type AuthMiddleware struct {
 	authSvc *service.AuthService
 }
@@ -36,7 +32,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), claimsKey, claims)
+		ctx := service.SetClaimsInContext(r.Context(), claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -61,14 +57,9 @@ func (m *AuthMiddleware) RequireRole(roles ...domain.Role) func(http.Handler) ht
 	}
 }
 
-// ClaimsFromContext はコンテキストからJWTクレームを取り出す
+// ClaimsFromContext はコンテキストからJWTクレームを取り出す（後方互換用ラッパー）
 func ClaimsFromContext(ctx context.Context) *service.Claims {
-	v := ctx.Value(claimsKey)
-	if v == nil {
-		return nil
-	}
-	c, _ := v.(*service.Claims)
-	return c
+	return service.ClaimsFromContext(ctx)
 }
 
 func extractBearerToken(r *http.Request) string {

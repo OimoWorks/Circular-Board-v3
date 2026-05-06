@@ -33,6 +33,10 @@ class User {
         return 'システム管理者';
       case 'association_admin':
         return '自治会管理者';
+      case 'vice_admin':
+        return '副会長';
+      case 'user_admin':
+        return 'ユーザー管理者';
       case 'user':
         return '一般ユーザー';
       default:
@@ -42,6 +46,8 @@ class User {
 
   bool get isSystemAdmin => role == 'system_admin';
   bool get isAssociationAdmin => role == 'association_admin';
+  bool get isViceAdmin => role == 'vice_admin';
+  bool get isUserAdmin => role == 'user_admin';
 }
 
 class AuthTokens {

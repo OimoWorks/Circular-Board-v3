@@ -23,6 +23,8 @@ import '../features/survey/screens/survey_answer_screen.dart';
 import '../features/survey/screens/survey_create_screen.dart';
 import '../features/survey/screens/survey_list_screen.dart';
 import '../features/survey/screens/survey_result_screen.dart';
+import '../features/permission/screens/permission_screen.dart';
+import '../features/permission/screens/emergency_appointment_screen.dart';
 
 // GoRouterはAuthNotifierをlistenable登録して認証状態変化で再評価する
 final routerProvider = Provider<GoRouter>((ref) {
@@ -151,6 +153,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           final id = state.pathParameters['id']!;
           return SurveyResultScreen(surveyId: id);
         },
+      ),
+      // ─── 権限管理 ──────────────────────────────────────────────
+      GoRoute(
+        path: '/permissions',
+        builder: (context, state) => const PermissionScreen(),
+      ),
+      GoRoute(
+        path: '/permissions/emergency-appointment',
+        builder: (context, state) => const EmergencyAppointmentScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

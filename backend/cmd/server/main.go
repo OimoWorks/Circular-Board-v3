@@ -24,6 +24,7 @@ import (
 	"circular-board/internal/home"
 	"circular-board/internal/middleware"
 	"circular-board/internal/notice"
+	"circular-board/internal/permission"
 	"circular-board/internal/repository"
 	"circular-board/internal/service"
 	"circular-board/internal/survey"
@@ -77,6 +78,11 @@ func main() {
 	homeSvc := home.NewService(homeRepo)
 	homeHandler := home.NewHandler(homeSvc)
 
+	permRepo := permission.NewRepository(pool)
+	permSvc := permission.NewService(permRepo)
+	permHandler := permission.NewHandler(permSvc)
+	permMW := middleware.NewPermissionMiddleware(permSvc)
+
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
@@ -100,17 +106,14 @@ func main() {
 			})
 		})
 
+		// 回覧物（DB権限チェック）
 		r.Route("/files", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
-			r.Get("/", fileHandler.List)
-			r.Get("/years", fileHandler.AvailableYears)
-			r.Get("/{id}/download", fileHandler.Download)
-
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
-				r.Post("/", fileHandler.Upload)
-				r.Delete("/{id}", fileHandler.Delete)
-			})
+			r.With(permMW.RequireFeature("files", "view")).Get("/", fileHandler.List)
+			r.With(permMW.RequireFeature("files", "view")).Get("/years", fileHandler.AvailableYears)
+			r.With(permMW.RequireFeature("files", "view")).Get("/{id}/download", fileHandler.Download)
+			r.With(permMW.RequireFeature("files", "create")).Post("/", fileHandler.Upload)
+			r.With(permMW.RequireFeature("files", "delete")).Delete("/{id}", fileHandler.Delete)
 		})
 
 		// 自治会管理（system_admin 専用）
@@ -125,57 +128,56 @@ func main() {
 			r.Put("/{id}/deactivate", assocHandler.Deactivate)
 		})
 
-		// アカウント管理（association_admin 以上）
+		// アカウント管理（DB権限チェック）
 		r.Route("/accounts", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
-			r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
-			r.Get("/", accountHandler.List)
-			r.Post("/", accountHandler.Create)
-			r.Put("/{id}", accountHandler.Update)
-			r.Delete("/{id}", accountHandler.Delete)
-			r.Put("/{id}/activate", accountHandler.Activate)
-			r.Put("/{id}/deactivate", accountHandler.Deactivate)
+			r.With(permMW.RequireFeature("accounts", "view")).Get("/", accountHandler.List)
+			r.With(permMW.RequireFeature("accounts", "create")).Post("/", accountHandler.Create)
+			r.With(permMW.RequireFeature("accounts", "edit")).Put("/{id}", accountHandler.Update)
+			r.With(permMW.RequireFeature("accounts", "delete")).Delete("/{id}", accountHandler.Delete)
+			r.With(permMW.RequireFeature("accounts", "edit")).Put("/{id}/activate", accountHandler.Activate)
+			r.With(permMW.RequireFeature("accounts", "edit")).Put("/{id}/deactivate", accountHandler.Deactivate)
 		})
 
+		// お知らせ（DB権限チェック）
 		r.Route("/notices", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
-			r.Get("/", noticeHandler.List)
-			r.Get("/unread-count", noticeHandler.UnreadCount)
-			r.Get("/{id}", noticeHandler.Get)
-			r.Post("/{id}/read", noticeHandler.MarkAsRead)
-
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
-				r.Post("/", noticeHandler.Create)
-				r.Delete("/{id}", noticeHandler.Delete)
-			})
+			r.With(permMW.RequireFeature("notices", "view")).Get("/", noticeHandler.List)
+			r.With(permMW.RequireFeature("notices", "view")).Get("/unread-count", noticeHandler.UnreadCount)
+			r.With(permMW.RequireFeature("notices", "view")).Get("/{id}", noticeHandler.Get)
+			r.With(permMW.RequireFeature("notices", "view")).Post("/{id}/read", noticeHandler.MarkAsRead)
+			r.With(permMW.RequireFeature("notices", "create")).Post("/", noticeHandler.Create)
+			r.With(permMW.RequireFeature("notices", "delete")).Delete("/{id}", noticeHandler.Delete)
 		})
 
-		// アンケート機能（全ロール閲覧・回答、管理者以上で作成・削除・集計）
+		// アンケート（DB権限チェック）
 		r.Route("/surveys", func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)
 
-			// 未回答件数（静的ルートを /{id} より前に登録）
-			r.Get("/unanswered-count", surveyHandler.UnansweredCount)
+			// 静的ルートを /{id} より前に登録
+			r.With(permMW.RequireFeature("surveys", "view")).Get("/unanswered-count", surveyHandler.UnansweredCount)
 
-			// 全ロールでアクセス可能
-			r.Get("/", surveyHandler.List)
-			r.Get("/{id}", surveyHandler.Get)
-			r.Post("/{id}/answer", surveyHandler.Answer)
+			r.With(permMW.RequireFeature("surveys", "view")).Get("/", surveyHandler.List)
+			r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}", surveyHandler.Get)
+			r.With(permMW.RequireFeature("surveys", "view")).Post("/{id}/answer", surveyHandler.Answer)
+			r.With(permMW.RequireFeature("surveys", "create")).Post("/", surveyHandler.Create)
+			r.With(permMW.RequireFeature("surveys", "delete")).Delete("/{id}", surveyHandler.Delete)
+			r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}/results", surveyHandler.Results)
+			r.With(permMW.RequireFeature("surveys", "create")).Post("/{id}/images", surveyHandler.UploadImage)
+			r.With(permMW.RequireFeature("surveys", "delete")).Delete("/{id}/images/{image_id}", surveyHandler.DeleteImage)
+			r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}/images/{image_id}", surveyHandler.GetImage)
+		})
 
-			// 管理者のみ
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
-				r.Post("/", surveyHandler.Create)
-				r.Delete("/{id}", surveyHandler.Delete)
-				r.Get("/{id}/results", surveyHandler.Results)
-				// 画像管理
-				r.Post("/{id}/images", surveyHandler.UploadImage)
-				r.Delete("/{id}/images/{image_id}", surveyHandler.DeleteImage)
-			})
-
-			// 画像取得（全ロール）
-			r.Get("/{id}/images/{image_id}", surveyHandler.GetImage)
+		// 権限管理（system_admin 専用）
+		r.Route("/permissions", func(r chi.Router) {
+			r.Use(authMiddleware.Authenticate)
+			r.Use(authMiddleware.RequireRole(domain.RoleSystemAdmin))
+			r.Get("/", permHandler.GetMatrix)
+			r.Put("/", permHandler.UpdatePermissions)
+			r.Get("/roles", permHandler.GetRoles)
+			r.Get("/features", permHandler.GetFeatures)
+			r.Post("/emergency-appointment", permHandler.EmergencyAppointment)
+			r.Get("/logs", permHandler.GetOperationLogs)
 		})
 	})
 
