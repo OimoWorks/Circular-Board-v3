@@ -27,6 +27,7 @@ import (
 	"circular-board/internal/db"
 	"circular-board/internal/domain"
 	"circular-board/internal/middleware"
+	"circular-board/internal/permission"
 	"circular-board/internal/repository"
 	"circular-board/internal/service"
 	"circular-board/internal/survey"
@@ -193,6 +194,64 @@ func makeTestToken(t *testing.T, assocID, userID, role string) string {
 	return signed
 }
 
+// ─── 権限ヘルパー ─────────────────────────────────────────────
+
+func getRoleIDByName(t *testing.T, name string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := testPool.QueryRow(context.Background(),
+		`SELECT id FROM roles WHERE name = $1`, name).Scan(&id)
+	require.NoError(t, err, "ロールID取得失敗: "+name)
+	return id
+}
+
+func getFeatureIDByName(t *testing.T, name string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	err := testPool.QueryRow(context.Background(),
+		`SELECT id FROM features WHERE name = $1`, name).Scan(&id)
+	require.NoError(t, err, "機能ID取得失敗: "+name)
+	return id
+}
+
+func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreate, canEdit, canDelete bool, scope string) {
+	t.Helper()
+	var orig struct {
+		canView, canCreate, canEdit, canDelete bool
+		scope                                  string
+		exists                                 bool
+	}
+	err := testPool.QueryRow(context.Background(),
+		`SELECT can_view, can_create, can_edit, can_delete, scope
+		 FROM role_permissions WHERE role_id = $1 AND feature_id = $2`,
+		roleID, featureID,
+	).Scan(&orig.canView, &orig.canCreate, &orig.canEdit, &orig.canDelete, &orig.scope)
+	orig.exists = (err == nil)
+
+	_, err2 := testPool.Exec(context.Background(), `
+		INSERT INTO role_permissions (role_id, feature_id, can_view, can_create, can_edit, can_delete, scope)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (role_id, feature_id) DO UPDATE SET
+			can_view=$3, can_create=$4, can_edit=$5, can_delete=$6, scope=$7, updated_at=NOW()`,
+		roleID, featureID, canView, canCreate, canEdit, canDelete, scope,
+	)
+	require.NoError(t, err2, "権限設定失敗")
+
+	t.Cleanup(func() {
+		if orig.exists {
+			_, _ = testPool.Exec(context.Background(), `
+				UPDATE role_permissions SET
+					can_view=$1, can_create=$2, can_edit=$3, can_delete=$4, scope=$5, updated_at=NOW()
+				WHERE role_id=$6 AND feature_id=$7`,
+				orig.canView, orig.canCreate, orig.canEdit, orig.canDelete, orig.scope, roleID, featureID,
+			)
+		} else {
+			_, _ = testPool.Exec(context.Background(),
+				`DELETE FROM role_permissions WHERE role_id=$1 AND feature_id=$2`, roleID, featureID)
+		}
+	})
+}
+
 // ─── テスト用ルーター ─────────────────────────────────────────
 
 type testDeps struct {
@@ -230,6 +289,40 @@ func newTestDeps() *testDeps {
 		})
 
 		r.Get("/{id}/images/{image_id}", surveyHandler.GetImage)
+	})
+
+	return &testDeps{router: r, surveySvc: surveySvc}
+}
+
+// newPermAwareTestDeps は RequireFeature ミドルウェアを使うルーターを返す（DB権限チェックテスト用）
+func newPermAwareTestDeps() *testDeps {
+	cfg := testConfig()
+	surveyRepo := survey.NewRepository(testPool)
+	surveySvc := survey.NewService(surveyRepo)
+	surveyHandler := survey.NewHandler(surveySvc, cfg)
+
+	userRepo := repository.NewUserRepository(testPool)
+	tokenRepo := repository.NewRefreshTokenRepository(testPool)
+	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
+	authMW := middleware.NewAuthMiddleware(authSvc)
+
+	permRepo := permission.NewRepository(testPool)
+	permSvc := permission.NewService(permRepo)
+	permMW := middleware.NewPermissionMiddleware(permSvc)
+
+	r := chi.NewRouter()
+	r.Route("/api/v1/surveys", func(r chi.Router) {
+		r.Use(authMW.Authenticate)
+		r.With(permMW.RequireFeature("surveys", "view")).Get("/unanswered-count", surveyHandler.UnansweredCount)
+		r.With(permMW.RequireFeature("surveys", "view")).Get("/", surveyHandler.List)
+		r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}", surveyHandler.Get)
+		r.With(permMW.RequireFeature("surveys", "view")).Post("/{id}/answer", surveyHandler.Answer)
+		r.With(permMW.RequireFeature("surveys", "create")).Post("/", surveyHandler.Create)
+		r.With(permMW.RequireFeature("surveys", "delete")).Delete("/{id}", surveyHandler.Delete)
+		r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}/results", surveyHandler.Results)
+		r.With(permMW.RequireFeature("surveys", "create")).Post("/{id}/images", surveyHandler.UploadImage)
+		r.With(permMW.RequireFeature("surveys", "delete")).Delete("/{id}/images/{image_id}", surveyHandler.DeleteImage)
+		r.With(permMW.RequireFeature("surveys", "view")).Get("/{id}/images/{image_id}", surveyHandler.GetImage)
 	})
 
 	return &testDeps{router: r, surveySvc: surveySvc}

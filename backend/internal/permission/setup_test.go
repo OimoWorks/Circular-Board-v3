@@ -1,4 +1,4 @@
-package notice_test
+package permission_test
 
 import (
 	"bytes"
@@ -25,16 +25,13 @@ import (
 	"circular-board/internal/db"
 	"circular-board/internal/domain"
 	"circular-board/internal/middleware"
-	"circular-board/internal/notice"
 	"circular-board/internal/permission"
 	"circular-board/internal/repository"
 	"circular-board/internal/service"
 )
 
-// ─── グローバル ──────────────────────────────────────────────
 var testPool *pgxpool.Pool
 
-// ─── TestMain：DB接続・マイグレーション ─────────────────────
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -44,7 +41,6 @@ func TestMain(m *testing.M) {
 	if os.Getenv("MIGRATIONS_PATH") == "" {
 		_, filename, _, ok := runtime.Caller(0)
 		if ok {
-			// setup_test.go が backend/internal/notice/ にある
 			backendDir := filepath.Dir(filepath.Dir(filepath.Dir(filename)))
 			_ = os.Setenv("MIGRATIONS_PATH", filepath.Join(backendDir, "db", "migrations"))
 		}
@@ -80,7 +76,6 @@ func connectTestDB(dsn string) (*pgxpool.Pool, error) {
 	return nil, fmt.Errorf("テストDB接続タイムアウト")
 }
 
-// ─── テスト用設定 ────────────────────────────────────────────
 func testConfig() *config.Config {
 	return &config.Config{
 		JWTSecret:          "test-jwt-secret-32bytes-padding!!",
@@ -92,7 +87,6 @@ func testConfig() *config.Config {
 
 // ─── テストデータ挿入ヘルパー ────────────────────────────────
 
-// insertTestAssociation は自治会を挿入しテスト後に削除する
 func insertTestAssociation(t *testing.T, name, code string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -108,7 +102,6 @@ func insertTestAssociation(t *testing.T, name, code string) uuid.UUID {
 	return id
 }
 
-// insertTestUser はユーザーを挿入しテスト後に削除する
 func insertTestUser(t *testing.T, assocID *uuid.UUID, name, email, password, role string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
@@ -128,48 +121,9 @@ func insertTestUser(t *testing.T, assocID *uuid.UUID, name, email, password, rol
 	return id
 }
 
-// insertTestNotice はお知らせを挿入しテスト後に削除する
-func insertTestNotice(t *testing.T, assocID, createdBy uuid.UUID, title, body string, isPinned bool) uuid.UUID {
-	t.Helper()
-	id := uuid.New()
-	now := time.Now()
-	_, err := testPool.Exec(context.Background(),
-		`INSERT INTO notices (id, association_id, title, body, is_pinned, created_by, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		id, assocID, title, body, isPinned, createdBy, now, now,
-	)
-	require.NoError(t, err, "お知らせの挿入に失敗")
-	t.Cleanup(func() {
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM notice_reads WHERE notice_id = $1`, id)
-		_, _ = testPool.Exec(context.Background(), `DELETE FROM notices WHERE id = $1`, id)
-	})
-	return id
-}
-
-// ─── JWTトークン生成ヘルパー ─────────────────────────────────
-
-// makeTestToken はテスト用のアクセストークンを生成する
-func makeTestToken(t *testing.T, assocID, userID, role string) string {
-	t.Helper()
-	cfg := testConfig()
-	claims := service.Claims{
-		UserID:        userID,
-		AssociationID: assocID,
-		Role:          role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.AccessTokenExpiry)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Subject:   userID,
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(cfg.JWTSecret))
-	require.NoError(t, err)
-	return signed
-}
-
 // ─── 権限ヘルパー ─────────────────────────────────────────────
 
+// getRoleIDByName はロール名からIDを取得する
 func getRoleIDByName(t *testing.T, name string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -179,6 +133,7 @@ func getRoleIDByName(t *testing.T, name string) uuid.UUID {
 	return id
 }
 
+// getFeatureIDByName は機能名からIDを取得する
 func getFeatureIDByName(t *testing.T, name string) uuid.UUID {
 	t.Helper()
 	var id uuid.UUID
@@ -188,8 +143,29 @@ func getFeatureIDByName(t *testing.T, name string) uuid.UUID {
 	return id
 }
 
+// upsertPermission は権限を直接DBに設定する（テスト専用）
+func upsertPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreate, canEdit, canDelete bool, scope string) {
+	t.Helper()
+	_, err := testPool.Exec(context.Background(), `
+		INSERT INTO role_permissions (role_id, feature_id, can_view, can_create, can_edit, can_delete, scope)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (role_id, feature_id) DO UPDATE SET
+			can_view   = EXCLUDED.can_view,
+			can_create = EXCLUDED.can_create,
+			can_edit   = EXCLUDED.can_edit,
+			can_delete = EXCLUDED.can_delete,
+			scope      = EXCLUDED.scope,
+			updated_at = NOW()`,
+		roleID, featureID, canView, canCreate, canEdit, canDelete, scope,
+	)
+	require.NoError(t, err, "権限設定失敗")
+}
+
+// withPermission は権限を一時的に変更しテスト後に復元する
 func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreate, canEdit, canDelete bool, scope string) {
 	t.Helper()
+
+	// 現在値を保存
 	var orig struct {
 		canView, canCreate, canEdit, canDelete bool
 		scope                                  string
@@ -202,15 +178,10 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 	).Scan(&orig.canView, &orig.canCreate, &orig.canEdit, &orig.canDelete, &orig.scope)
 	orig.exists = (err == nil)
 
-	_, err2 := testPool.Exec(context.Background(), `
-		INSERT INTO role_permissions (role_id, feature_id, can_view, can_create, can_edit, can_delete, scope)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (role_id, feature_id) DO UPDATE SET
-			can_view=$3, can_create=$4, can_edit=$5, can_delete=$6, scope=$7, updated_at=NOW()`,
-		roleID, featureID, canView, canCreate, canEdit, canDelete, scope,
-	)
-	require.NoError(t, err2, "権限設定失敗")
+	// 新しい値を設定
+	upsertPermission(t, roleID, featureID, canView, canCreate, canEdit, canDelete, scope)
 
+	// テスト後に復元
 	t.Cleanup(func() {
 		if orig.exists {
 			_, _ = testPool.Exec(context.Background(), `
@@ -226,49 +197,36 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 	})
 }
 
+// ─── JWTトークン生成ヘルパー ─────────────────────────────────
+
+func makeTestToken(t *testing.T, assocID, userID, role string) string {
+	t.Helper()
+	cfg := testConfig()
+	claims := service.Claims{
+		UserID:        userID,
+		AssociationID: assocID,
+		Role:          role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(cfg.AccessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Subject:   userID,
+		},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := tok.SignedString([]byte(cfg.JWTSecret))
+	require.NoError(t, err)
+	return signed
+}
+
 // ─── テスト用ルーター ─────────────────────────────────────────
 
 type testDeps struct {
-	router    http.Handler
-	noticeSvc *notice.Service
+	router  http.Handler
+	permSvc *permission.Service
 }
 
 func newTestDeps() *testDeps {
 	cfg := testConfig()
-	noticeRepo := notice.NewRepository(testPool)
-	noticeSvc := notice.NewService(noticeRepo)
-	noticeHandler := notice.NewHandler(noticeSvc)
-
-	userRepo := repository.NewUserRepository(testPool)
-	tokenRepo := repository.NewRefreshTokenRepository(testPool)
-	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
-	authMW := middleware.NewAuthMiddleware(authSvc)
-
-	r := chi.NewRouter()
-	r.Route("/api/v1/notices", func(r chi.Router) {
-		r.Use(authMW.Authenticate)
-		r.Get("/", noticeHandler.List)
-		r.Get("/unread-count", noticeHandler.UnreadCount)
-		r.Get("/{id}", noticeHandler.Get)
-		r.Post("/{id}/read", noticeHandler.MarkAsRead)
-
-		r.Group(func(r chi.Router) {
-			r.Use(authMW.RequireRole(domain.RoleAssociationAdmin, domain.RoleSystemAdmin))
-			r.Post("/", noticeHandler.Create)
-			r.Delete("/{id}", noticeHandler.Delete)
-		})
-	})
-
-	return &testDeps{router: r, noticeSvc: noticeSvc}
-}
-
-// newPermAwareTestDeps は RequireFeature ミドルウェアを使うルーターを返す（DB権限チェックテスト用）
-func newPermAwareTestDeps() *testDeps {
-	cfg := testConfig()
-	noticeRepo := notice.NewRepository(testPool)
-	noticeSvc := notice.NewService(noticeRepo)
-	noticeHandler := notice.NewHandler(noticeSvc)
-
 	userRepo := repository.NewUserRepository(testPool)
 	tokenRepo := repository.NewRefreshTokenRepository(testPool)
 	authSvc := service.NewAuthService(userRepo, tokenRepo, cfg)
@@ -276,20 +234,21 @@ func newPermAwareTestDeps() *testDeps {
 
 	permRepo := permission.NewRepository(testPool)
 	permSvc := permission.NewService(permRepo)
-	permMW := middleware.NewPermissionMiddleware(permSvc)
+	permHandler := permission.NewHandler(permSvc)
 
 	r := chi.NewRouter()
-	r.Route("/api/v1/notices", func(r chi.Router) {
+	r.Route("/api/v1/permissions", func(r chi.Router) {
 		r.Use(authMW.Authenticate)
-		r.With(permMW.RequireFeature("notices", "view")).Get("/", noticeHandler.List)
-		r.With(permMW.RequireFeature("notices", "view")).Get("/unread-count", noticeHandler.UnreadCount)
-		r.With(permMW.RequireFeature("notices", "view")).Get("/{id}", noticeHandler.Get)
-		r.With(permMW.RequireFeature("notices", "view")).Post("/{id}/read", noticeHandler.MarkAsRead)
-		r.With(permMW.RequireFeature("notices", "create")).Post("/", noticeHandler.Create)
-		r.With(permMW.RequireFeature("notices", "delete")).Delete("/{id}", noticeHandler.Delete)
+		r.Use(authMW.RequireRole(domain.RoleSystemAdmin))
+		r.Get("/", permHandler.GetMatrix)
+		r.Put("/", permHandler.UpdatePermissions)
+		r.Get("/roles", permHandler.GetRoles)
+		r.Get("/features", permHandler.GetFeatures)
+		r.Post("/emergency-appointment", permHandler.EmergencyAppointment)
+		r.Get("/logs", permHandler.GetOperationLogs)
 	})
 
-	return &testDeps{router: r, noticeSvc: noticeSvc}
+	return &testDeps{router: r, permSvc: permSvc}
 }
 
 // ─── HTTPテストヘルパー ──────────────────────────────────────

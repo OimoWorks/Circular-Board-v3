@@ -384,3 +384,153 @@ func TestCreateSurveyHandler_MemberForbidden(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
+
+// ═══════════════════════════════════════════════════════════
+// DB権限チェック（RequireFeature ミドルウェア）
+// ═══════════════════════════════════════════════════════════
+
+// TestSurveyListHandler_PermAware_WithPermission
+// DB権限あり（surveys:view=true）なら一覧取得できる（200）
+func TestSurveyListHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "閲覧権限あり自治会", "HDL_SV_PA_L1")
+	userID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sv-pa-l1.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), userID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/surveys", nil, token)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestSurveyListHandler_PermAware_NoViewPermission
+// DB権限なし（surveys:view=false）なら一覧取得を拒否される（403）
+func TestSurveyListHandler_PermAware_NoViewPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "閲覧権限なし自治会", "HDL_SV_PA_L2")
+	userID := insertTestUser(t, &assocID, "ユーザー", "user@hdl-sv-pa-l2.test", "pass123", "user_admin")
+	token := makeTestToken(t, assocID.String(), userID.String(), "user_admin")
+
+	roleID := getRoleIDByName(t, "user_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, false, false, false, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/surveys", nil, token)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestSurveyCreateHandler_PermAware_WithPermission
+// DB権限あり（surveys:create=true）なら作成できる（201）
+func TestSurveyCreateHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "作成権限あり自治会", "HDL_SV_PA_C1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sv-pa-c1.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodPost, "/api/v1/surveys",
+		map[string]interface{}{
+			"title":       "権限あり作成",
+			"description": "",
+			"expires_at":  time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+			"questions": []map[string]interface{}{
+				{
+					"question_text": "質問1",
+					"question_type": "single",
+					"sort_order":    1,
+					"choices": []map[string]interface{}{
+						{"choice_text": "A", "sort_order": 1},
+						{"choice_text": "B", "sort_order": 2},
+					},
+				},
+			},
+		},
+		token,
+	)
+
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	t.Cleanup(func() {
+		body := decodeBody(t, rr)
+		if data, ok := body["data"].(map[string]interface{}); ok {
+			if id, ok := data["id"].(string); ok {
+				svID, _ := uuid.Parse(id)
+				_, _ = testPool.Exec(context.Background(), `DELETE FROM survey_questions WHERE survey_id = $1`, svID)
+				_, _ = testPool.Exec(context.Background(), `DELETE FROM surveys WHERE id = $1`, svID)
+			}
+		}
+	})
+}
+
+// TestSurveyCreateHandler_PermAware_NoPermission
+// DB権限なし（surveys:create=false）なら拒否される（403）
+func TestSurveyCreateHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "作成権限なし自治会", "HDL_SV_PA_C2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sv-pa-c2.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, true, false, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodPost, "/api/v1/surveys",
+		map[string]interface{}{
+			"title":      "権限なし作成",
+			"expires_at": time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+			"questions":  []interface{}{},
+		},
+		token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestSurveyDeleteHandler_PermAware_WithPermission
+// DB権限あり（surveys:delete=true）なら削除できる（200）
+func TestSurveyDeleteHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "削除権限あり自治会", "HDL_SV_PA_D1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sv-pa-d1.test", "pass123", "association_admin")
+	surveyID := insertTestSurvey(t, assocID, adminID, "削除対象", time.Now().Add(24*time.Hour))
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/surveys/%s", surveyID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestSurveyDeleteHandler_PermAware_NoPermission
+// DB権限なし（surveys:delete=false）なら拒否される（403）
+func TestSurveyDeleteHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "削除権限なし自治会", "HDL_SV_PA_D2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-sv-pa-d2.test", "pass123", "association_admin")
+	surveyID := insertTestSurvey(t, assocID, adminID, "削除対象", time.Now().Add(24*time.Hour))
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "surveys")
+	withPermission(t, roleID, featureID, true, true, true, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/surveys/%s", surveyID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}

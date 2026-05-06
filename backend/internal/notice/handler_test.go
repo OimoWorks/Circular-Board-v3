@@ -531,3 +531,116 @@ func TestNoticeUnreadCountHandler_Unauthorized(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 }
+
+// ═══════════════════════════════════════════════════════════
+// DB権限チェック（RequireFeature ミドルウェア）
+// ═══════════════════════════════════════════════════════════
+
+// TestNoticeCreateHandler_PermAware_WithPermission
+// DB権限あり（notices:create=true）のassociation_adminは登録できる（201）
+func TestNoticeCreateHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "権限あり登録自治会", "HDL_NOT_PA_C1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-not-pa-c1.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "notices")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodPost, "/api/v1/notices",
+		map[string]interface{}{"title": "権限あり登録", "body": "本文"},
+		token,
+	)
+
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	t.Cleanup(func() {
+		body := decodeBody(t, rr)
+		if data, ok := body["data"].(map[string]interface{}); ok {
+			if id, ok := data["id"].(string); ok {
+				noticeID, _ := uuid.Parse(id)
+				_, _ = testPool.Exec(context.Background(), `DELETE FROM notices WHERE id = $1`, noticeID)
+			}
+		}
+	})
+}
+
+// TestNoticeCreateHandler_PermAware_NoPermission
+// DB権限なし（notices:create=false）のassociation_adminは拒否される（403）
+func TestNoticeCreateHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "権限なし登録自治会", "HDL_NOT_PA_C2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-not-pa-c2.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "notices")
+	withPermission(t, roleID, featureID, true, false, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodPost, "/api/v1/notices",
+		map[string]interface{}{"title": "権限なし登録", "body": "本文"},
+		token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestNoticeDeleteHandler_PermAware_WithPermission
+// DB権限あり（notices:delete=true）のassociation_adminは削除できる（200）
+func TestNoticeDeleteHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "権限あり削除自治会", "HDL_NOT_PA_D1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-not-pa-d1.test", "pass123", "association_admin")
+	noticeID := insertTestNotice(t, assocID, adminID, "削除対象", "本文", false)
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "notices")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/notices/%s", noticeID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestNoticeDeleteHandler_PermAware_NoPermission
+// DB権限なし（notices:delete=false）のassociation_adminは拒否される（403）
+func TestNoticeDeleteHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "権限なし削除自治会", "HDL_NOT_PA_D2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-not-pa-d2.test", "pass123", "association_admin")
+	noticeID := insertTestNotice(t, assocID, adminID, "削除対象", "本文", false)
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "notices")
+	withPermission(t, roleID, featureID, true, true, true, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/notices/%s", noticeID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestNoticeListHandler_PermAware_NoViewPermission
+// DB権限なし（notices:view=false）の場合は一覧取得を拒否される（403）
+func TestNoticeListHandler_PermAware_NoViewPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "閲覧権限なし自治会", "HDL_NOT_PA_L1")
+	userID := insertTestUser(t, &assocID, "ユーザー", "user@hdl-not-pa-l1.test", "pass123", "user_admin")
+	token := makeTestToken(t, assocID.String(), userID.String(), "user_admin")
+
+	roleID := getRoleIDByName(t, "user_admin")
+	featureID := getFeatureIDByName(t, "notices")
+	withPermission(t, roleID, featureID, false, false, false, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/notices", nil, token)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}

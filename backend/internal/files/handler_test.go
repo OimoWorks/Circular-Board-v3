@@ -796,3 +796,135 @@ func TestListAssociationsHandler_Forbidden_AssociationAdmin(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rr.Code)
 }
+
+// ═══════════════════════════════════════════════════════════
+// DB権限チェック（RequireFeature ミドルウェア）
+// ═══════════════════════════════════════════════════════════
+
+// TestFilesListHandler_PermAware_WithPermission
+// DB権限あり（files:view=true）なら一覧取得できる（200）
+func TestFilesListHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "閲覧権限あり自治会", "HDL_F_PA_L1")
+	userID := insertTestUser(t, &assocID, "管理者", "admin@hdl-f-pa-l1.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), userID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/files", nil, token)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestFilesListHandler_PermAware_NoViewPermission
+// DB権限なし（files:view=false）なら一覧取得を拒否される（403）
+func TestFilesListHandler_PermAware_NoViewPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "閲覧権限なし自治会", "HDL_F_PA_L2")
+	userID := insertTestUser(t, &assocID, "ユーザー", "user@hdl-f-pa-l2.test", "pass123", "user_admin")
+	token := makeTestToken(t, assocID.String(), userID.String(), "user_admin")
+
+	roleID := getRoleIDByName(t, "user_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, false, false, false, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router, http.MethodGet, "/api/v1/files", nil, token)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestFilesUploadHandler_PermAware_WithPermission
+// DB権限あり（files:create=true）なら、アップロードが通る（201）
+func TestFilesUploadHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "UL権限あり自治会", "HDL_F_PA_U1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-f-pa-u1.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doMultipartUpload(t, deps.router, "/api/v1/files",
+		dummyPDF, "テスト.pdf", "application/pdf",
+		map[string]string{"year": "2024", "month": "4"},
+		token,
+	)
+
+	assert.Equal(t, http.StatusCreated, rr.Code)
+
+	t.Cleanup(func() {
+		body := decodeBody(t, rr)
+		if data, ok := body["data"].(map[string]interface{}); ok {
+			if id, ok := data["id"].(string); ok {
+				fileID, _ := uuid.Parse(id)
+				_, _ = testPool.Exec(context.Background(), `DELETE FROM files WHERE id = $1`, fileID)
+			}
+		}
+	})
+}
+
+// TestFilesUploadHandler_PermAware_NoPermission
+// DB権限なし（files:create=false）なら拒否される（403）
+func TestFilesUploadHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "UL権限なし自治会", "HDL_F_PA_U2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-f-pa-u2.test", "pass123", "association_admin")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, true, false, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doMultipartUpload(t, deps.router, "/api/v1/files",
+		dummyPDF, "テスト.pdf", "application/pdf",
+		map[string]string{"year": "2024", "month": "4"},
+		token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
+
+// TestFilesDeleteHandler_PermAware_WithPermission
+// DB権限あり（files:delete=true）なら削除できる（200）
+func TestFilesDeleteHandler_PermAware_WithPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "DEL権限あり自治会", "HDL_F_PA_D1")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-f-pa-d1.test", "pass123", "association_admin")
+	fileID := insertTestFile(t, assocID, adminID, 2024, 1, "削除対象.pdf", "application/pdf")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/files/%s", fileID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestFilesDeleteHandler_PermAware_NoPermission
+// DB権限なし（files:delete=false）なら拒否される（403）
+func TestFilesDeleteHandler_PermAware_NoPermission(t *testing.T) {
+	assocID := insertTestAssociation(t, "DEL権限なし自治会", "HDL_F_PA_D2")
+	adminID := insertTestUser(t, &assocID, "管理者", "admin@hdl-f-pa-d2.test", "pass123", "association_admin")
+	fileID := insertTestFile(t, assocID, adminID, 2024, 1, "削除対象.pdf", "application/pdf")
+	token := makeTestToken(t, assocID.String(), adminID.String(), "association_admin")
+
+	roleID := getRoleIDByName(t, "association_admin")
+	featureID := getFeatureIDByName(t, "files")
+	withPermission(t, roleID, featureID, true, true, true, false, "own_association")
+
+	deps := newPermAwareTestDeps()
+	rr := doRequest(t, deps.router,
+		http.MethodDelete, fmt.Sprintf("/api/v1/files/%s", fileID),
+		nil, token,
+	)
+
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+}
