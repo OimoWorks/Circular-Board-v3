@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../main.dart';
 import '../../association/data/models/association_model.dart' show AssociationDetail;
 import '../../association/data/repositories/association_repository.dart';
+import '../../auth/presentation/auth_provider.dart';
 import '../data/models/permission_model.dart';
 import '../providers/permission_provider.dart';
 
