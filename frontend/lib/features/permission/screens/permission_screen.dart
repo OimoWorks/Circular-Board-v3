@@ -82,7 +82,12 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen> {
           associations: _associations,
           loading: _loadingAssoc,
           selectedId: notifier.selectedAssociationId,
-          onChanged: (id) => notifier.selectAssociation(id),
+          onChanged: (id) {
+            final name = id == null
+                ? null
+                : _associations.firstWhere((a) => a.id == id).name;
+            notifier.selectAssociation(id, associationName: name);
+          },
         ),
         if (notifier.errorMessage != null && notifier.matrix == null)
           Expanded(

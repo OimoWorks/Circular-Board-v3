@@ -74,9 +74,11 @@ class HomeScreen extends ConsumerWidget {
             _UserInfoCard(user: user, isEasy: isEasy),
             SizedBox(height: isEasy ? 20 : 16),
 
-            // ─── 最新お知らせ ────────────────────────────────────
-            _RecentNoticesSection(isEasy: isEasy),
-            SizedBox(height: isEasy ? 20 : 16),
+            // ─── 最新お知らせ（system_admin 以外） ──────────────────
+            if (user.role != 'system_admin') ...[
+              _RecentNoticesSection(isEasy: isEasy),
+              SizedBox(height: isEasy ? 20 : 16),
+            ],
 
             // ─── 最新回覧物（system_admin 以外） ─────────────────
             if (user.role != 'system_admin') ...[

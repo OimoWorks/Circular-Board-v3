@@ -29,6 +29,9 @@ class PermissionNotifier extends ChangeNotifier {
   /// 現在選択中の自治会ID。null の場合はデフォルト設定を表示する。
   String? _selectedAssociationId;
 
+  /// 現在選択中の自治会名。メッセージ表示に使用する。
+  String? _selectedAssociationName;
+
   /// ローカル編集用（保存前の一時状態）
   List<RolePermission> _editedPermissions = [];
 
@@ -41,12 +44,15 @@ class PermissionNotifier extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
   String? get selectedAssociationId => _selectedAssociationId;
+  String? get selectedAssociationName => _selectedAssociationName;
   List<RolePermission> get editedPermissions => _editedPermissions;
 
   /// 自治会を切り替えてその権限設定をロードする。
   /// [associationId] が null の場合はデフォルト設定を表示する。
-  Future<void> selectAssociation(String? associationId) async {
+  /// [associationName] は更新成功メッセージに使用する。
+  Future<void> selectAssociation(String? associationId, {String? associationName}) async {
     _selectedAssociationId = associationId;
+    _selectedAssociationName = associationName;
     notifyListeners();
     await load();
   }
@@ -124,9 +130,13 @@ class PermissionNotifier extends ChangeNotifier {
         _editedPermissions,
         associationId: _selectedAssociationId,
       );
-      _successMessage = _selectedAssociationId == null
-          ? 'デフォルト権限を更新しました'
-          : '自治会の権限設定を更新しました';
+      if (_selectedAssociationId == null) {
+        _successMessage = 'デフォルト権限を更新しました';
+      } else if (_selectedAssociationName != null) {
+        _successMessage = '${_selectedAssociationName!}の権限を更新しました';
+      } else {
+        _successMessage = '権限を更新しました';
+      }
       await load();
       return true;
     } on PermissionException catch (e) {
