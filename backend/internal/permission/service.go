@@ -16,8 +16,11 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// GetMatrix は権限マトリクス（ロール・機能・権限）を返す
-func (s *Service) GetMatrix(ctx context.Context) (*PermissionMatrix, error) {
+// GetMatrix は権限マトリクス（ロール・機能・権限）を返す。
+// assocID が nil の場合はデフォルト設定を返す。
+// assocID が指定された場合はその自治会の有効な権限設定（専用設定または
+// デフォルト設定へのフォールバック）を返す。
+func (s *Service) GetMatrix(ctx context.Context, assocID *uuid.UUID) (*PermissionMatrix, error) {
 	roles, err := s.repo.GetRoles(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get roles: %w", err)
@@ -26,7 +29,7 @@ func (s *Service) GetMatrix(ctx context.Context) (*PermissionMatrix, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get features: %w", err)
 	}
-	perms, err := s.repo.GetAllPermissions(ctx)
+	perms, err := s.repo.GetAllPermissions(ctx, assocID)
 	if err != nil {
 		return nil, fmt.Errorf("get permissions: %w", err)
 	}
@@ -70,9 +73,11 @@ func (s *Service) GetFeatures(ctx context.Context) ([]*FeatureModel, error) {
 	return features, nil
 }
 
-// UpdatePermissions は権限を一括更新する
-func (s *Service) UpdatePermissions(ctx context.Context, operatorID uuid.UUID, inputs []UpdateInput) error {
-	if err := s.repo.UpdatePermissions(ctx, operatorID, inputs); err != nil {
+// UpdatePermissions は権限を一括更新する。
+// assocID が nil の場合はデフォルト設定を更新する。
+// assocID が指定された場合はその自治会専用の設定を更新する。
+func (s *Service) UpdatePermissions(ctx context.Context, operatorID uuid.UUID, assocID *uuid.UUID, inputs []UpdateInput) error {
+	if err := s.repo.UpdatePermissions(ctx, operatorID, assocID, inputs); err != nil {
 		return fmt.Errorf("update permissions: %w", err)
 	}
 	return nil
@@ -86,9 +91,11 @@ func (s *Service) EmergencyAppointment(ctx context.Context, operatorID uuid.UUID
 	return nil
 }
 
-// CheckPermission はロール名・機能名でアクセス可否を返す
-func (s *Service) CheckPermission(ctx context.Context, roleName, featureName string) (*PermissionCheck, error) {
-	pc, err := s.repo.GetPermissionByRoleAndFeature(ctx, roleName, featureName)
+// CheckPermission はロール名・機能名でアクセス可否を返す。
+// assocID が nil の場合はデフォルト設定を参照する。
+// assocID が指定された場合は自治会専用設定を優先し、なければデフォルト設定を参照する。
+func (s *Service) CheckPermission(ctx context.Context, roleName, featureName string, assocID *uuid.UUID) (*PermissionCheck, error) {
+	pc, err := s.repo.GetPermissionByRoleAndFeature(ctx, roleName, featureName, assocID)
 	if err != nil {
 		return nil, fmt.Errorf("check permission: %w", err)
 	}

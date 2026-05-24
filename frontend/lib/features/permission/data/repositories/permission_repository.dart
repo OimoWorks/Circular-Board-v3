@@ -17,9 +17,20 @@ class PermissionRepository {
 
   PermissionRepository(this._client);
 
-  Future<PermissionMatrix> getMatrix() async {
+  /// 権限マトリクスを取得する。
+  /// [associationId] が null の場合はデフォルト設定を返す。
+  /// [associationId] が指定された場合はその自治会の有効な権限設定を返す
+  /// （自治会専用設定があればそれを、なければデフォルト設定にフォールバック）。
+  Future<PermissionMatrix> getMatrix({String? associationId}) async {
     try {
-      final res = await _client.get<Map<String, dynamic>>('/permissions');
+      final queryParams = <String, dynamic>{};
+      if (associationId != null) {
+        queryParams['association_id'] = associationId;
+      }
+      final res = await _client.get<Map<String, dynamic>>(
+        '/permissions',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
       final data = res.data!['data'] as Map<String, dynamic>;
       return PermissionMatrix.fromJson(data);
     } on DioException catch (e) {
@@ -27,9 +38,16 @@ class PermissionRepository {
     }
   }
 
-  Future<void> updatePermissions(List<RolePermission> permissions) async {
+  /// 権限を一括更新する。
+  /// [associationId] が null の場合はデフォルト設定を更新する。
+  /// [associationId] が指定された場合はその自治会専用の設定を更新する。
+  Future<void> updatePermissions(
+    List<RolePermission> permissions, {
+    String? associationId,
+  }) async {
     try {
       await _client.put<void>('/permissions', data: {
+        'association_id': associationId,
         'permissions': permissions.map((p) => p.toJson()).toList(),
       });
     } on DioException catch (e) {

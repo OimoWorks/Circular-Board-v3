@@ -159,11 +159,11 @@ func TestPermissionUpdateHandler_BulkUpdate(t *testing.T) {
 
 	// 反映確認
 	permRepo := deps.permSvc
-	pc1, err := permRepo.CheckPermission(context.Background(), "vice_admin", "accounts")
+	pc1, err := permRepo.CheckPermission(context.Background(), "vice_admin", "accounts", nil)
 	require.NoError(t, err)
 	assert.True(t, pc1.CanView, "vice_admin/accountsのcan_viewがtrueになるべき")
 
-	pc2, err := permRepo.CheckPermission(context.Background(), "user_admin", "files")
+	pc2, err := permRepo.CheckPermission(context.Background(), "user_admin", "files", nil)
 	require.NoError(t, err)
 	assert.True(t, pc2.CanCreate, "user_admin/filesのcan_createがtrueになるべき")
 }

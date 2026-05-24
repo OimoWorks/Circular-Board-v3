@@ -44,32 +44,42 @@ class RolePermission {
   final String id;
   final String roleId;
   final String featureId;
+  /// null の場合はデフォルト設定（全自治会共通）を表す。
+  /// 非 null の場合はその自治会専用の設定を表す。
+  final String? associationId;
   final bool canView;
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
   final String scope;
+  /// true の場合は自治会専用の設定が存在することを示す。
+  /// false の場合はデフォルト設定にフォールバックしていることを示す。
+  final bool isCustomized;
 
   const RolePermission({
     required this.id,
     required this.roleId,
     required this.featureId,
+    this.associationId,
     required this.canView,
     required this.canCreate,
     required this.canEdit,
     required this.canDelete,
     required this.scope,
+    this.isCustomized = false,
   });
 
   factory RolePermission.fromJson(Map<String, dynamic> json) => RolePermission(
         id: json['id'] as String,
         roleId: json['role_id'] as String,
         featureId: json['feature_id'] as String,
+        associationId: json['association_id'] as String?,
         canView: json['can_view'] as bool? ?? false,
         canCreate: json['can_create'] as bool? ?? false,
         canEdit: json['can_edit'] as bool? ?? false,
         canDelete: json['can_delete'] as bool? ?? false,
         scope: json['scope'] as String? ?? 'own_association',
+        isCustomized: json['is_customized'] as bool? ?? false,
       );
 
   RolePermission copyWith({
@@ -78,16 +88,19 @@ class RolePermission {
     bool? canEdit,
     bool? canDelete,
     String? scope,
+    bool? isCustomized,
   }) =>
       RolePermission(
         id: id,
         roleId: roleId,
         featureId: featureId,
+        associationId: associationId,
         canView: canView ?? this.canView,
         canCreate: canCreate ?? this.canCreate,
         canEdit: canEdit ?? this.canEdit,
         canDelete: canDelete ?? this.canDelete,
         scope: scope ?? this.scope,
+        isCustomized: isCustomized ?? this.isCustomized,
       );
 
   Map<String, dynamic> toJson() => {
@@ -144,6 +157,7 @@ class OperationLog {
   final String? targetId;
   final String? beforeValue;
   final String? afterValue;
+  final String? associationId;
   final DateTime createdAt;
 
   const OperationLog({
@@ -154,6 +168,7 @@ class OperationLog {
     this.targetId,
     this.beforeValue,
     this.afterValue,
+    this.associationId,
     required this.createdAt,
   });
 
@@ -165,6 +180,7 @@ class OperationLog {
         targetId: json['target_id'] as String?,
         beforeValue: json['before_value'] as String?,
         afterValue: json['after_value'] as String?,
+        associationId: json['association_id'] as String?,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
 }

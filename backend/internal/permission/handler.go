@@ -19,10 +19,19 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// GET /api/v1/permissions
-// 権限マトリクス（ロール・機能・権限）一覧取得（system_adminのみ）
+// GET /api/v1/permissions?association_id=<uuid>
+// 権限マトリクス（ロール・機能・権限）一覧取得（system_adminのみ）。
+// association_id クエリパラメータを省略するとデフォルト設定を返す。
+// association_id を指定するとその自治会の有効な権限設定を返す
+// （自治会専用設定があればそれを、なければデフォルト設定にフォールバック）。
 func (h *Handler) GetMatrix(w http.ResponseWriter, r *http.Request) {
-	matrix, err := h.svc.GetMatrix(r.Context())
+	assocID, err := parseOptionalAssocID(r.URL.Query().Get("association_id"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_PARAM", "association_idの形式が不正です")
+		return
+	}
+
+	matrix, err := h.svc.GetMatrix(r.Context(), assocID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "権限情報の取得に失敗しました")
 		return
@@ -31,7 +40,9 @@ func (h *Handler) GetMatrix(w http.ResponseWriter, r *http.Request) {
 }
 
 // PUT /api/v1/permissions
-// 権限一括更新（system_adminのみ）
+// 権限一括更新（system_adminのみ）。
+// リクエストボディの association_id が null またはフィールドなしの場合はデフォルト設定を更新する。
+// association_id が指定された場合はその自治会専用の設定を更新する。
 func (h *Handler) UpdatePermissions(w http.ResponseWriter, r *http.Request) {
 	claims := service.ClaimsFromContext(r.Context())
 	if claims == nil {
@@ -45,7 +56,8 @@ func (h *Handler) UpdatePermissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Permissions []struct {
+		AssociationID *string `json:"association_id"`
+		Permissions   []struct {
 			RoleID    string `json:"role_id"`
 			FeatureID string `json:"feature_id"`
 			CanView   bool   `json:"can_view"`
@@ -57,6 +69,12 @@ func (h *Handler) UpdatePermissions(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "リクエストの形式が不正です")
+		return
+	}
+
+	assocID, err := parseOptionalAssocIDPtr(req.AssociationID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_PARAM", "association_idの形式が不正です")
 		return
 	}
 
@@ -87,7 +105,7 @@ func (h *Handler) UpdatePermissions(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if err := h.svc.UpdatePermissions(r.Context(), operatorID, inputs); err != nil {
+	if err := h.svc.UpdatePermissions(r.Context(), operatorID, assocID, inputs); err != nil {
 		respondError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "権限の更新に失敗しました")
 		return
 	}
@@ -171,6 +189,30 @@ func (h *Handler) GetOperationLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{"logs": logs})
+}
+
+// ─── association_id パースヘルパー ──────────────────────────────────
+
+// parseOptionalAssocID はクエリパラメータ文字列から *uuid.UUID を返す。
+// 空文字列の場合は nil を返す（デフォルト設定を意味する）。
+func parseOptionalAssocID(s string) (*uuid.UUID, error) {
+	if s == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+// parseOptionalAssocIDPtr はリクエストボディの *string から *uuid.UUID を返す。
+// フィールドが nil の場合は nil を返す（デフォルト設定を意味する）。
+func parseOptionalAssocIDPtr(s *string) (*uuid.UUID, error) {
+	if s == nil {
+		return nil, nil
+	}
+	return parseOptionalAssocID(*s)
 }
 
 // ─── JSON レスポンス共通 ─────────────────────────────────────────

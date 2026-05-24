@@ -143,13 +143,13 @@ func getFeatureIDByName(t *testing.T, name string) uuid.UUID {
 	return id
 }
 
-// upsertPermission は権限を直接DBに設定する（テスト専用）
+// upsertPermission はデフォルト設定（association_id IS NULL）の権限を直接DBに設定する（テスト専用）
 func upsertPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreate, canEdit, canDelete bool, scope string) {
 	t.Helper()
 	_, err := testPool.Exec(context.Background(), `
-		INSERT INTO role_permissions (role_id, feature_id, can_view, can_create, can_edit, can_delete, scope)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (role_id, feature_id) DO UPDATE SET
+		INSERT INTO role_permissions (role_id, feature_id, association_id, can_view, can_create, can_edit, can_delete, scope)
+		VALUES ($1, $2, NULL, $3, $4, $5, $6, $7)
+		ON CONFLICT (role_id, feature_id) WHERE association_id IS NULL DO UPDATE SET
 			can_view   = EXCLUDED.can_view,
 			can_create = EXCLUDED.can_create,
 			can_edit   = EXCLUDED.can_edit,
@@ -161,11 +161,11 @@ func upsertPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCre
 	require.NoError(t, err, "権限設定失敗")
 }
 
-// withPermission は権限を一時的に変更しテスト後に復元する
+// withPermission はデフォルト設定（association_id IS NULL）の権限を一時的に変更しテスト後に復元する
 func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreate, canEdit, canDelete bool, scope string) {
 	t.Helper()
 
-	// 現在値を保存
+	// 現在値を保存（デフォルト設定のみ対象）
 	var orig struct {
 		canView, canCreate, canEdit, canDelete bool
 		scope                                  string
@@ -173,7 +173,7 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 	}
 	err := testPool.QueryRow(context.Background(),
 		`SELECT can_view, can_create, can_edit, can_delete, scope
-		 FROM role_permissions WHERE role_id = $1 AND feature_id = $2`,
+		 FROM role_permissions WHERE role_id = $1 AND feature_id = $2 AND association_id IS NULL`,
 		roleID, featureID,
 	).Scan(&orig.canView, &orig.canCreate, &orig.canEdit, &orig.canDelete, &orig.scope)
 	orig.exists = (err == nil)
@@ -187,12 +187,12 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 			_, _ = testPool.Exec(context.Background(), `
 				UPDATE role_permissions SET
 					can_view=$1, can_create=$2, can_edit=$3, can_delete=$4, scope=$5, updated_at=NOW()
-				WHERE role_id=$6 AND feature_id=$7`,
+				WHERE role_id=$6 AND feature_id=$7 AND association_id IS NULL`,
 				orig.canView, orig.canCreate, orig.canEdit, orig.canDelete, orig.scope, roleID, featureID,
 			)
 		} else {
 			_, _ = testPool.Exec(context.Background(),
-				`DELETE FROM role_permissions WHERE role_id=$1 AND feature_id=$2`, roleID, featureID)
+				`DELETE FROM role_permissions WHERE role_id=$1 AND feature_id=$2 AND association_id IS NULL`, roleID, featureID)
 		}
 	})
 }

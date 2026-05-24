@@ -235,15 +235,15 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 	}
 	err := testPool.QueryRow(context.Background(),
 		`SELECT can_view, can_create, can_edit, can_delete, scope
-		 FROM role_permissions WHERE role_id = $1 AND feature_id = $2`,
+		 FROM role_permissions WHERE role_id = $1 AND feature_id = $2 AND association_id IS NULL`,
 		roleID, featureID,
 	).Scan(&orig.canView, &orig.canCreate, &orig.canEdit, &orig.canDelete, &orig.scope)
 	orig.exists = (err == nil)
 
 	_, err2 := testPool.Exec(context.Background(), `
-		INSERT INTO role_permissions (role_id, feature_id, can_view, can_create, can_edit, can_delete, scope)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (role_id, feature_id) DO UPDATE SET
+		INSERT INTO role_permissions (role_id, feature_id, association_id, can_view, can_create, can_edit, can_delete, scope)
+		VALUES ($1, $2, NULL, $3, $4, $5, $6, $7)
+		ON CONFLICT (role_id, feature_id) WHERE association_id IS NULL DO UPDATE SET
 			can_view=$3, can_create=$4, can_edit=$5, can_delete=$6, scope=$7, updated_at=NOW()`,
 		roleID, featureID, canView, canCreate, canEdit, canDelete, scope,
 	)
@@ -254,12 +254,12 @@ func withPermission(t *testing.T, roleID, featureID uuid.UUID, canView, canCreat
 			_, _ = testPool.Exec(context.Background(), `
 				UPDATE role_permissions SET
 					can_view=$1, can_create=$2, can_edit=$3, can_delete=$4, scope=$5, updated_at=NOW()
-				WHERE role_id=$6 AND feature_id=$7`,
+				WHERE role_id=$6 AND feature_id=$7 AND association_id IS NULL`,
 				orig.canView, orig.canCreate, orig.canEdit, orig.canDelete, orig.scope, roleID, featureID,
 			)
 		} else {
 			_, _ = testPool.Exec(context.Background(),
-				`DELETE FROM role_permissions WHERE role_id=$1 AND feature_id=$2`, roleID, featureID)
+				`DELETE FROM role_permissions WHERE role_id=$1 AND feature_id=$2 AND association_id IS NULL`, roleID, featureID)
 		}
 	})
 }

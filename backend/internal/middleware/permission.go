@@ -5,6 +5,7 @@ import (
 
 	"circular-board/internal/domain"
 	"circular-board/internal/permission"
+	"circular-board/internal/service"
 )
 
 // PermissionMiddleware はDBのrole_permissionsを参照してアクセス制御を行う
@@ -18,6 +19,8 @@ func NewPermissionMiddleware(svc *permission.Service) *PermissionMiddleware {
 
 // RequireFeature は指定機能・操作の権限を DB から確認するミドルウェアを返す。
 // system_admin は常に許可（DBに依存しない）。
+// その他のロールはJWTクレームの association_id に基づいて自治会専用設定を優先し、
+// 存在しない場合はデフォルト設定にフォールバックして権限を判定する。
 // action: "view" | "create" | "edit" | "delete"
 func (m *PermissionMiddleware) RequireFeature(featureName, action string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -34,7 +37,11 @@ func (m *PermissionMiddleware) RequireFeature(featureName, action string) func(h
 				return
 			}
 
-			pc, err := m.permSvc.CheckPermission(r.Context(), claims.Role, featureName)
+			// JWTクレームからユーザーの自治会IDを取得する。
+			// 取得に失敗した場合（形式不正）はデフォルト設定にフォールバックする。
+			assocID, _ := service.AssociationIDFromClaims(claims)
+
+			pc, err := m.permSvc.CheckPermission(r.Context(), claims.Role, featureName, assocID)
 			if err != nil {
 				// DBエラー時はアクセス拒否（安全側に倒す）
 				respondForbidden(w)

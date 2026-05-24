@@ -114,7 +114,7 @@ func TestPermissionRepository_GetFeatures_DisplayName(t *testing.T) {
 // 全ロール×全機能の権限が取得できる
 func TestPermissionRepository_GetAllPermissions_ReturnsAll(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	perms, err := repo.GetAllPermissions(context.Background())
+	perms, err := repo.GetAllPermissions(context.Background(), nil)
 	require.NoError(t, err)
 	// 5ロール×6機能 = 30件
 	assert.GreaterOrEqual(t, len(perms), 30, "少なくとも30件の権限レコードが必要")
@@ -124,7 +124,7 @@ func TestPermissionRepository_GetAllPermissions_ReturnsAll(t *testing.T) {
 // スコープが正しく返る
 func TestPermissionRepository_GetAllPermissions_ScopeCorrect(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	perms, err := repo.GetAllPermissions(context.Background())
+	perms, err := repo.GetAllPermissions(context.Background(), nil)
 	require.NoError(t, err)
 
 	roleIDByName := make(map[uuid.UUID]string)
@@ -171,7 +171,7 @@ func TestPermissionRepository_GetAllPermissions_DynamicRole(t *testing.T) {
 	})
 
 	repo := permission.NewRepository(testPool)
-	perms, err := repo.GetAllPermissions(context.Background())
+	perms, err := repo.GetAllPermissions(context.Background(), nil)
 	require.NoError(t, err)
 
 	found := false
@@ -193,7 +193,7 @@ func TestPermissionRepository_GetAllPermissions_DynamicRole(t *testing.T) {
 // ロール名・機能名で権限チェック用データを取得できる
 func TestPermissionRepository_GetPermissionByRoleAndFeature_Success(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "association_admin", "notices")
+	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "association_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanView, "association_adminはnoticesを閲覧できるべき")
 	assert.True(t, pc.CanCreate, "association_adminはnoticesを作成できるべき")
@@ -204,7 +204,7 @@ func TestPermissionRepository_GetPermissionByRoleAndFeature_Success(t *testing.T
 // 一般ユーザーは閲覧のみ
 func TestPermissionRepository_GetPermissionByRoleAndFeature_UserViewOnly(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user", "notices")
+	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user", "notices", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanView, "userはnoticesを閲覧できるべき")
 	assert.False(t, pc.CanCreate, "userはnoticesを作成できてはならない")
@@ -216,7 +216,7 @@ func TestPermissionRepository_GetPermissionByRoleAndFeature_UserViewOnly(t *test
 // 存在しないロールIDはエラー
 func TestPermissionRepository_GetPermissionByRoleAndFeature_NotFound(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	_, err := repo.GetPermissionByRoleAndFeature(context.Background(), "nonexistent_role", "notices")
+	_, err := repo.GetPermissionByRoleAndFeature(context.Background(), "nonexistent_role", "notices", nil)
 	assert.Error(t, err, "存在しないロールはエラーが返るべき")
 }
 
@@ -224,7 +224,7 @@ func TestPermissionRepository_GetPermissionByRoleAndFeature_NotFound(t *testing.
 // system_adminはスコープ=all
 func TestPermissionRepository_GetPermissionByRoleAndFeature_SystemAdmin(t *testing.T) {
 	repo := permission.NewRepository(testPool)
-	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "permissions")
+	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "permissions", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanView)
 	assert.True(t, pc.CanCreate)
@@ -251,7 +251,7 @@ func TestPermissionRepository_UpdatePermissions_CanViewUpdate(t *testing.T) {
 
 	// can_editをtrueに更新
 	repo := permission.NewRepository(testPool)
-	err := repo.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err := repo.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID:    roleID,
 			FeatureID: featureID,
@@ -264,7 +264,7 @@ func TestPermissionRepository_UpdatePermissions_CanViewUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user_admin", "accounts")
+	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user_admin", "accounts", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanEdit, "can_editがtrueに更新されているべき")
 
@@ -281,7 +281,7 @@ func TestPermissionRepository_UpdatePermissions_ScopeUpdate(t *testing.T) {
 	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
 
 	repo := permission.NewRepository(testPool)
-	err := repo.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err := repo.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID:    roleID,
 			FeatureID: featureID,
@@ -294,7 +294,7 @@ func TestPermissionRepository_UpdatePermissions_ScopeUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "vice_admin", "notices")
+	pc, err := repo.GetPermissionByRoleAndFeature(context.Background(), "vice_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "all", pc.Scope, "スコープがallに更新されているべき")
 }
@@ -313,7 +313,7 @@ func TestPermissionRepository_UpdatePermissions_BulkUpdate(t *testing.T) {
 	withPermission(t, viceAdminRoleID, filesFeatureID, true, true, true, true, "own_association")
 
 	repo := permission.NewRepository(testPool)
-	err := repo.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err := repo.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID: userAdminRoleID, FeatureID: noticesFeatureID,
 			CanView: true, CanCreate: true, CanEdit: false, CanDelete: false,
@@ -327,11 +327,11 @@ func TestPermissionRepository_UpdatePermissions_BulkUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	pc1, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user_admin", "notices")
+	pc1, err := repo.GetPermissionByRoleAndFeature(context.Background(), "user_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.True(t, pc1.CanCreate, "user_admin/noticesのcan_createがtrueに更新されているべき")
 
-	pc2, err := repo.GetPermissionByRoleAndFeature(context.Background(), "vice_admin", "files")
+	pc2, err := repo.GetPermissionByRoleAndFeature(context.Background(), "vice_admin", "files", nil)
 	require.NoError(t, err)
 	assert.False(t, pc2.CanCreate, "vice_admin/filesのcan_createがfalseに更新されているべき")
 }
@@ -346,12 +346,12 @@ func TestPermissionRepository_UpdatePermissions_SystemAdminSkipped(t *testing.T)
 
 	// system_adminの現在値を確認（全trueのはず）
 	repo := permission.NewRepository(testPool)
-	before, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "notices")
+	before, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "notices", nil)
 	require.NoError(t, err)
 	require.True(t, before.CanView)
 
 	// system_adminの権限をfalseに変更しようとする
-	err = repo.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err = repo.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID: sysAdminRoleID, FeatureID: noticesFeatureID,
 			CanView: false, CanCreate: false, CanEdit: false, CanDelete: false,
@@ -361,7 +361,7 @@ func TestPermissionRepository_UpdatePermissions_SystemAdminSkipped(t *testing.T)
 	require.NoError(t, err) // エラーにはならず、スキップされる
 
 	// system_adminの値が変わっていないことを確認
-	after, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "notices")
+	after, err := repo.GetPermissionByRoleAndFeature(context.Background(), "system_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.Equal(t, before.CanView, after.CanView, "system_adminの権限は変更されていないべき")
 	assert.Equal(t, before.CanCreate, after.CanCreate)

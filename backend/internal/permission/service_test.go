@@ -23,7 +23,7 @@ func newPermissionService() *permission.Service {
 // ロール・機能・権限が全て取得できる
 func TestPermissionService_GetMatrix_ReturnsAll(t *testing.T) {
 	svc := newPermissionService()
-	matrix, err := svc.GetMatrix(context.Background())
+	matrix, err := svc.GetMatrix(context.Background(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, matrix)
 
@@ -36,7 +36,7 @@ func TestPermissionService_GetMatrix_ReturnsAll(t *testing.T) {
 // データがない場合も空スライスが返る
 func TestPermissionService_GetMatrix_NeverNil(t *testing.T) {
 	svc := newPermissionService()
-	matrix, err := svc.GetMatrix(context.Background())
+	matrix, err := svc.GetMatrix(context.Background(), nil)
 	require.NoError(t, err)
 	assert.NotNil(t, matrix.Roles)
 	assert.NotNil(t, matrix.Features)
@@ -55,7 +55,7 @@ func TestPermissionService_CheckPermission_CanView(t *testing.T) {
 	withPermission(t, roleID, featureID, true, false, false, false, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "user", "notices")
+	pc, err := svc.CheckPermission(context.Background(), "user", "notices", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanView, "userはnoticesを閲覧できるべき")
 }
@@ -68,7 +68,7 @@ func TestPermissionService_CheckPermission_CanCreate(t *testing.T) {
 	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "association_admin", "notices")
+	pc, err := svc.CheckPermission(context.Background(), "association_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanCreate, "association_adminはnoticesを作成できるべき")
 }
@@ -81,7 +81,7 @@ func TestPermissionService_CheckPermission_CanEdit(t *testing.T) {
 	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "vice_admin", "files")
+	pc, err := svc.CheckPermission(context.Background(), "vice_admin", "files", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanEdit, "vice_adminはfilesを編集できるべき")
 }
@@ -94,7 +94,7 @@ func TestPermissionService_CheckPermission_CanDelete(t *testing.T) {
 	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "association_admin", "surveys")
+	pc, err := svc.CheckPermission(context.Background(), "association_admin", "surveys", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanDelete, "association_adminはsurveysを削除できるべき")
 }
@@ -107,7 +107,7 @@ func TestPermissionService_CheckPermission_NoAccess(t *testing.T) {
 	withPermission(t, roleID, featureID, false, false, false, false, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "user", "accounts")
+	pc, err := svc.CheckPermission(context.Background(), "user", "accounts", nil)
 	require.NoError(t, err)
 	assert.False(t, pc.CanView, "userはaccountsを閲覧できてはならない")
 	assert.False(t, pc.CanCreate)
@@ -119,7 +119,7 @@ func TestPermissionService_CheckPermission_NoAccess(t *testing.T) {
 // スコープallのユーザーはスコープ値がallで返る
 func TestPermissionService_CheckPermission_ScopeAll(t *testing.T) {
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "system_admin", "notices")
+	pc, err := svc.CheckPermission(context.Background(), "system_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "all", pc.Scope, "system_adminのスコープはallであるべき")
 }
@@ -132,7 +132,7 @@ func TestPermissionService_CheckPermission_ScopeOwnAssociation(t *testing.T) {
 	withPermission(t, roleID, featureID, true, true, true, true, "own_association")
 
 	svc := newPermissionService()
-	pc, err := svc.CheckPermission(context.Background(), "association_admin", "notices")
+	pc, err := svc.CheckPermission(context.Background(), "association_admin", "notices", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "own_association", pc.Scope, "association_adminのスコープはown_associationであるべき")
 }
@@ -141,7 +141,7 @@ func TestPermissionService_CheckPermission_ScopeOwnAssociation(t *testing.T) {
 // 存在しないロールはエラー
 func TestPermissionService_CheckPermission_NotFound(t *testing.T) {
 	svc := newPermissionService()
-	_, err := svc.CheckPermission(context.Background(), "nonexistent_role", "notices")
+	_, err := svc.CheckPermission(context.Background(), "nonexistent_role", "notices", nil)
 	assert.Error(t, err, "存在しないロールはエラーが返るべき")
 }
 
@@ -159,7 +159,7 @@ func TestPermissionService_UpdatePermissions_Success(t *testing.T) {
 	withPermission(t, roleID, featureID, true, false, false, false, "own_association")
 
 	svc := newPermissionService()
-	err := svc.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err := svc.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID: roleID, FeatureID: featureID,
 			CanView: true, CanCreate: true, CanEdit: false, CanDelete: false,
@@ -169,7 +169,7 @@ func TestPermissionService_UpdatePermissions_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// 変更後即時反映される
-	pc, err := svc.CheckPermission(context.Background(), "user_admin", "surveys")
+	pc, err := svc.CheckPermission(context.Background(), "user_admin", "surveys", nil)
 	require.NoError(t, err)
 	assert.True(t, pc.CanCreate, "更新後即時にcan_createがtrueになるべき")
 }
@@ -183,11 +183,11 @@ func TestPermissionService_UpdatePermissions_SystemAdminNotChangeable(t *testing
 	featureID := getFeatureIDByName(t, "permissions")
 
 	svc := newPermissionService()
-	before, err := svc.CheckPermission(context.Background(), "system_admin", "permissions")
+	before, err := svc.CheckPermission(context.Background(), "system_admin", "permissions", nil)
 	require.NoError(t, err)
 	require.True(t, before.CanView)
 
-	err = svc.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err = svc.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID: sysAdminRoleID, FeatureID: featureID,
 			CanView: false, CanCreate: false, CanEdit: false, CanDelete: false,
@@ -196,7 +196,7 @@ func TestPermissionService_UpdatePermissions_SystemAdminNotChangeable(t *testing
 	})
 	require.NoError(t, err)
 
-	after, err := svc.CheckPermission(context.Background(), "system_admin", "permissions")
+	after, err := svc.CheckPermission(context.Background(), "system_admin", "permissions", nil)
 	require.NoError(t, err)
 	assert.Equal(t, before.CanView, after.CanView, "system_adminの権限は変更されていないべき")
 }
@@ -212,11 +212,11 @@ func TestPermissionService_UpdatePermissions_ImmediateReflection(t *testing.T) {
 
 	svc := newPermissionService()
 
-	before, err := svc.CheckPermission(context.Background(), "vice_admin", "accounts")
+	before, err := svc.CheckPermission(context.Background(), "vice_admin", "accounts", nil)
 	require.NoError(t, err)
 	assert.False(t, before.CanView)
 
-	err = svc.UpdatePermissions(context.Background(), operatorID, []permission.UpdateInput{
+	err = svc.UpdatePermissions(context.Background(), operatorID, nil, []permission.UpdateInput{
 		{
 			RoleID: roleID, FeatureID: featureID,
 			CanView: true, CanCreate: false, CanEdit: false, CanDelete: false,
@@ -225,7 +225,7 @@ func TestPermissionService_UpdatePermissions_ImmediateReflection(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	after, err := svc.CheckPermission(context.Background(), "vice_admin", "accounts")
+	after, err := svc.CheckPermission(context.Background(), "vice_admin", "accounts", nil)
 	require.NoError(t, err)
 	assert.True(t, after.CanView, "権限変更が即時に反映されているべき")
 }
