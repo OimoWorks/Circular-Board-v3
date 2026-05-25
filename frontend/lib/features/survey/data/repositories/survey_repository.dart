@@ -38,16 +38,20 @@ class SurveyRepository {
     required List<Map<String, dynamic>> questions,
     String? associationId,
   }) async {
-    final body = {
-      'title': title,
-      'description': description,
-      'expires_at': expiresAt.toUtc().toIso8601String(),
-      'questions': questions,
-      if (associationId != null) 'association_id': associationId,
-    };
-    final res = await _client.post('/surveys', data: body);
-    final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
-    return SurveyModel.fromJson(data);
+    try {
+      final body = {
+        'title': title,
+        'description': description,
+        'expires_at': expiresAt.toUtc().toIso8601String(),
+        'questions': questions,
+        if (associationId != null) 'association_id': associationId,
+      };
+      final res = await _client.post('/surveys', data: body);
+      final data = (res.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+      return SurveyModel.fromJson(data);
+    } on DioException catch (e) {
+      throw mapDioError(e);
+    }
   }
 
   Future<void> delete(String id) async {
@@ -119,6 +123,19 @@ class SurveyException implements Exception {
 }
 
 SurveyException mapDioError(DioException e) {
+  final statusCode = e.response?.statusCode;
+  switch (statusCode) {
+    case 400:
+      return SurveyException('入力内容を確認してください', code: '400');
+    case 401:
+      return SurveyException('再度ログインしてください', code: '401');
+    case 403:
+      return SurveyException('この操作の権限がありません', code: '403');
+    case 500:
+      return SurveyException(
+          'サーバーエラーが発生しました。しばらく待ってから再試行してください',
+          code: '500');
+  }
   final data = e.response?.data;
   if (data is Map<String, dynamic>) {
     final error = data['error'] as Map<String, dynamic>?;

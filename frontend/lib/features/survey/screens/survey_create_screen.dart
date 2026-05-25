@@ -104,9 +104,16 @@ class _SurveyCreateScreenState extends ConsumerState<SurveyCreateScreen> {
       return;
     }
     for (final q in _questions) {
+      if (q.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('質問内容を入力してください'),
+          backgroundColor: Colors.orange,
+        ));
+        return;
+      }
       if (q.choices.length < 2) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('「${q.text}」の選択肢を2つ以上追加してください'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('選択肢を2つ以上追加してください'),
           backgroundColor: Colors.orange,
         ));
         return;
