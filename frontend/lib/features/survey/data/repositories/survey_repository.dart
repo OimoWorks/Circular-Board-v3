@@ -123,8 +123,19 @@ class SurveyException implements Exception {
 }
 
 SurveyException mapDioError(DioException e) {
-  final statusCode = e.response?.statusCode;
-  switch (statusCode) {
+  // APIがエラーメッセージを返している場合はそれを優先する
+  final data = e.response?.data;
+  if (data is Map<String, dynamic>) {
+    final error = data['error'] as Map<String, dynamic>?;
+    if (error != null) {
+      return SurveyException(
+        error['message'] as String? ?? 'エラーが発生しました',
+        code: error['code'] as String?,
+      );
+    }
+  }
+  // APIメッセージがない場合はステータスコード別のメッセージを使用
+  switch (e.response?.statusCode) {
     case 400:
       return SurveyException('入力内容を確認してください', code: '400');
     case 401:
@@ -135,16 +146,6 @@ SurveyException mapDioError(DioException e) {
       return SurveyException(
           'サーバーエラーが発生しました。しばらく待ってから再試行してください',
           code: '500');
-  }
-  final data = e.response?.data;
-  if (data is Map<String, dynamic>) {
-    final error = data['error'] as Map<String, dynamic>?;
-    if (error != null) {
-      return SurveyException(
-        error['message'] as String? ?? 'エラーが発生しました',
-        code: error['code'] as String?,
-      );
-    }
   }
   return SurveyException('通信エラーが発生しました');
 }
